@@ -164,12 +164,18 @@ const TAIL='&tool=LitRadar&email=giladshahak@gmail.com';
 let state={articles:[], activeJournal:null};
 
 // ---- rate-limited fetch gates ----
-function makeGate(spacing){let q=Promise.resolve();return fn=>{const r=q.then(fn);q=r.catch(()=>{}).then(()=>new Promise(s=>setTimeout(s,spacing)));return r;};}
-const ncbiGate=makeGate(340);   // ~3/sec
-const oaGate=makeGate(130);
+// מגביל מקביליות (ולא טורי) — מהיר בהרבה תוך כיבוד מגבלות הקצב
+function makeLimiter(max){let active=0;const q=[];
+  const run=()=>{while(active<max&&q.length){const it=q.shift();active++;Promise.resolve().then(it.fn).then(it.res,it.rej).finally(()=>{active--;run();});}};
+  return fn=>new Promise((res,rej)=>{q.push({fn,res,rej});run();});}
+const ncbiGate=makeLimiter(3);  // עד 3 בקשות במקביל (מגבלת NCBI)
+const oaGate=makeLimiter(5);
+async function tfetch(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||22000);
+  try{return await fetch(url,Object.assign({signal:c.signal},opt||{}));}finally{clearTimeout(t);}}
 
-async function eutilsJSON(url){return ncbiGate(()=>fetch(url).then(r=>r.json()));}
-async function eutilsText(url){return ncbiGate(()=>fetch(url).then(r=>r.text()));}
+async function withRetry(fn,n){for(let i=0;i<(n||3);i++){try{return await fn();}catch(e){if(i===(n||3)-1)throw e;await new Promise(s=>setTimeout(s,600*(i+1)));}}}
+async function eutilsJSON(url){return ncbiGate(()=>withRetry(()=>tfetch(url).then(r=>r.json())));}
+async function eutilsText(url){return ncbiGate(()=>withRetry(()=>tfetch(url).then(r=>r.text())));}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function pad(n){return n<10?'0'+n:''+n;}
 function isoToSlash(d){return d?d.replace(/-/g,'/'):'';}
@@ -186,10 +192,12 @@ function onDatePreset(){exitIssue(); const w=document.getElementById('window').v
 function customDate(){exitIssue(); runSearch();}
 
 // ---- PubMed search ----
-function journalTerm(j,fullIssue){
-  let t=`(${j.issn_e}[IS] OR ${j.issn}[IS])`;
-  if(j.filter_obgyn) t+=` AND ${CFG.obgyn_filter}`;
-  if(!fullIssue) t+=` AND ${CFG.high_value_filter}`;   // גיליון מלא = בלי פילטר ערך-גבוה
+// שאילתה אחת לקבוצת עיתונים (כולם הומוגניים ב-filter_obgyn) — חוסך בקשות
+function groupTerm(js,fullIssue){
+  const issns=js.map(j=>`${j.issn_e}[IS] OR ${j.issn}[IS]`).join(' OR ');
+  let t=`(${issns})`;
+  if(js[0].filter_obgyn) t+=` AND ${CFG.obgyn_filter}`;
+  if(!fullIssue) t+=` AND ${CFG.high_value_filter}`;
   return t;
 }
 async function esearch(term,retmax){
@@ -270,13 +278,19 @@ function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCas
 function setStatus(html){document.getElementById('status').innerHTML=html;}
 async function runSearch(){
   state.favView=false; updateFavBtn();
-  const journals=state.activeJournal?CFG.journals.filter(j=>j.nick===state.activeJournal):CFG.journals;
   const fi=!!state.issueMode;
+  // מקבצים את העיתונים לקבוצות הומוגניות (ייעודי / כללי) → 1-2 שאילתות בלבד
+  let groups;
+  if(state.activeJournal){const j=CFG.journals.find(x=>x.nick===state.activeJournal);groups=j?[[j]]:[];}
+  else{const spec=CFG.journals.filter(j=>!j.filter_obgyn),gen=CFG.journals.filter(j=>j.filter_obgyn);groups=[spec,gen].filter(g=>g.length);}
   setStatus((fi?'טוען את הגיליון המלא':'סורק את PubMed בזמן אמת')+'… <span class="spinner"></span>');
   document.getElementById('feed').innerHTML='';
   try{
-    // esearch per journal (parallel via gate)
-    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j,fi), fi?300:60).catch(()=>[])));
+    let done=0;const N=groups.length;
+    const idLists=await Promise.all(groups.map(g=>esearch(groupTerm(g,fi), fi?300:250)
+      .then(r=>{done++;setStatus(`סורק… ${done}/${N} <span class="spinner"></span>`);return r;})
+      .catch(()=>{done++;return [];})));
+    setStatus('טוען מאמרים… <span class="spinner"></span>');
     const allIds=[...new Set([].concat(...idLists))];
     if(!allIds.length){setStatus('לא נמצאו מאמרים בטווח הזה. נסה להרחיב את התקופה.');state.articles=[];renderChips();document.getElementById('countbar').innerHTML='';return;}
     // efetch in chunks of 150
@@ -377,6 +391,7 @@ function cardHTML(a,i){
           <button class="btn" onclick="pasteFullText('${a.pmid}')" title="נתח מטקסט מלא שתדביק">📋 טקסט מלא</button>
           <button class="btn" onclick="document.getElementById('ab-${a.pmid}').classList.toggle('open')">📄 תקציר</button>
           ${a.doi?`<a class="btn" href="https://doi.org/${esc(a.doi)}" target="_blank">🔗 מקור</a>`:''}
+          <button class="btn" onclick="toNotebookLM('${a.pmid}','${esc(a.doi||'')}')" title="העתק קישור ופתח NotebookLM">📓 NotebookLM</button>
         </div>
         <div class="panel" id="ab-${a.pmid}"><div class="abx" dir="auto">${esc(a.abstract)||'— אין תקציר —'}</div></div>
         <div class="panel" id="an-${a.pmid}"${an?' data-ready="1"':''}>${an?analysisHTML(an.payload,an.scope):''}</div>
@@ -411,6 +426,13 @@ function pasteFullText(pmid){
   p.innerHTML=`<div class="an-box"><b>📋 הדבק את הטקסט המלא של המאמר</b><div style="color:var(--muted);font-size:12px;margin-bottom:5px">היכנס למאמר דרך המנוי שלך (🔗 מקור), העתק את גוף המאמר והדבק כאן לניתוח מעמיק יותר.</div><textarea id="ft-${pmid}" placeholder="הדבק כאן…" style="width:100%;height:150px;border:1px solid var(--line);border-radius:9px;padding:9px;font-family:inherit;font-size:13px"></textarea><button class="btn btn-primary" style="margin-top:7px" onclick="runFull('${pmid}')">⚡ נתח טקסט מלא</button></div>`;
 }
 function runFull(pmid){const t=(document.getElementById('ft-'+pmid).value||'').trim();if(t.length<200){alert('הדבק טקסט ארוך יותר של המאמר (לפחות פסקה).');return;}analyzeLive(pmid,t);}
+// ---- NotebookLM ----
+function toast(msg){let t=document.getElementById('lrtoast');if(!t){t=document.createElement('div');t.id='lrtoast';t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2A2722;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transition:.25s;max-width:90%;text-align:center';document.body.appendChild(t);}t.textContent=msg;requestAnimationFrame(()=>t.style.opacity='1');clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity='0',4500);}
+function toNotebookLM(pmid,doi){
+  const url=doi?('https://doi.org/'+doi):('https://pubmed.ncbi.nlm.nih.gov/'+pmid+'/');
+  const done=()=>{toast('הקישור הועתק ✓ — ב-NotebookLM: Add source → Website → הדבק (Ctrl+V)');window.open('https://notebooklm.google.com/','_blank');};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(done,done);}else{done();}
+}
 function cleanKey(s){return (s||'').replace(/[^\x21-\x7E]/g,'');}  // רק ASCII נראה — בלי רווחים/שורות
 function setKey(){
   const cur=localStorage.getItem('lr_key')||'';

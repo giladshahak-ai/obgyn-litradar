@@ -5,23 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LitRadar · מכ"ם ספרות חי</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@400;500;700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600;1,700&family=Archivo:wght@700;800;900&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#F4F1EC; --card:#FBF9F5; --ink:#33302B; --muted:#7C766C; --line:#E6E0D6;
-  --brand:#7E6A8F; --brand-d:#5F4F6E; --soft:#EEEAE2;
-  --hi:#3F6149; --hi-bg:#E1ECE2; --mid:#8A6A3A; --mid-bg:#F3E8D5; --lo:#5E5950; --lo-bg:#E8E6E1;
-  --chip-bg:#EEEAE2; --chip-fg:#5E584E; --star-bg:#F3E7CF; --star-fg:#8A6B33;
-  --strong-bg:#E4EDE5; --strong-bd:#9DBFA4; --weak-bg:#F5E7E4; --weak-bd:#D6AfA6;
-  --verdict-bg:#ECE8F0; --verdict-bd:#D0C6DA; --gold:#B98E3C;
+  --bg:#F1ECE5; --card:#FFFFFF; --ink:#2A2722; --muted:#8A8378; --line:#EAE3D9;
+  --brand:#6B5680; --brand-d:#4F3E61; --soft:#F1ECE4;
+  --hi:#3C5E47; --hi-bg:#E6F0E8; --mid:#8A6A3A; --mid-bg:#F5EBD8; --lo:#6A645B; --lo-bg:#EEEAE3;
+  --chip-bg:#F1ECE4; --chip-fg:#6B6459; --star-bg:#F4E9D2; --star-fg:#8A6B33;
+  --strong-bg:#E9F1EA; --strong-bd:#AECbB2; --weak-bg:#F7EAE6; --weak-bd:#DEC1B9;
+  --verdict-bg:#EFEAF2; --verdict-bd:#D6CCE0; --gold:#B08A3E;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:'Heebo',sans-serif;background:var(--bg);color:var(--ink);}
+body{margin:0;font-family:'Assistant',sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;}
 a{color:inherit;text-decoration:none}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px;}
-.hero{background:linear-gradient(125deg,#EDE4E0 0%,#E7E2EC 55%,#E1E8E4 130%);color:var(--ink);padding:26px 0 60px;border-bottom:1px solid var(--line);}
-.hero h1{margin:0;font-family:'Frank Ruhl Libre',serif;font-size:31px;font-weight:900;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
-.hero .sub{margin-top:7px;color:#6a6258;font-size:14.5px}
+.hero{background:linear-gradient(120deg,#ECE5DF 0%,#E9E3EC 60%,#E3EAE5 120%);color:var(--ink);padding:30px 0 64px;border-bottom:1px solid var(--line);}
+.hero h1{margin:0;font-family:'Frank Ruhl Libre',serif;font-size:32px;font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:12px}
+.hero .sub{margin-top:9px;color:#7b7468;font-size:14.5px;font-weight:400;letter-spacing:.1px}
 .toolbar{max-width:1080px;margin:-40px auto 0;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 34px rgba(90,70,60,.10);display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;position:sticky;top:8px;z-index:30}
 .search{flex:1;min-width:170px;display:flex;align-items:center;gap:8px;background:#F4F1EC;border:1px solid var(--line);border-radius:11px;padding:9px 13px;align-self:stretch}
 .search input{border:0;background:transparent;outline:0;width:100%;font-family:inherit;font-size:14px;color:var(--ink)}
@@ -59,7 +59,12 @@ a{color:inherit;text-decoration:none}
 .ttl:hover{color:var(--brand)}
 .meta{color:var(--muted);font-size:13px;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .jpill{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:700;background:#5E584E}
-.jbrand{display:inline-block;font-family:'Frank Ruhl Libre',serif;font-weight:900;color:#fff;border-radius:9px;padding:5px 14px;font-size:15.5px;letter-spacing:.3px;box-shadow:0 2px 7px rgba(0,0,0,.13);margin-bottom:9px;line-height:1.2}
+.jbrand{display:inline-block;font-size:20px;line-height:1.05;margin-bottom:7px}
+.lg-serif{font-family:'Playfair Display',serif;font-weight:800;letter-spacing:.2px}
+.lg-serifi{font-family:'Playfair Display',serif;font-weight:700;font-style:italic;letter-spacing:.2px}
+.lg-cond{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:.6px}
+.favbtn{border:0;background:none;cursor:pointer;font-size:23px;line-height:1;color:#CFC8BC;transition:.15s;padding:0}
+.favbtn:hover,.favbtn.on{color:var(--gold)}
 .crown{color:var(--gold);font-weight:800}
 .tags{margin-top:11px;display:flex;gap:6px;flex-wrap:wrap}
 .tag{border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
@@ -129,6 +134,7 @@ a{color:inherit;text-decoration:none}
   <div class="ctl"><label>מיון</label><select class="sortsel" id="sort" onchange="applyView()"><option value="imp">חשיבות</option><option value="date">תאריך</option></select></div>
   <button class="btn btn-primary" onclick="runSearch()">🔄 חפש</button>
   <button class="btn btn-trend" onclick="openTrends()">📈 מגמות בתחום</button>
+  <button class="btn" id="favViewBtn" onclick="toggleFavView()">★ מועדפים (0)</button>
   <button class="btn" onclick="setKey()" title="מפתח Claude API לניתוח ביקורתי חי (נשמר רק בדפדפן)">🔑 ניתוח</button>
 </div>
 <div class="chips" id="chips"></div>
@@ -263,6 +269,7 @@ function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCas
 // ---- run live search ----
 function setStatus(html){document.getElementById('status').innerHTML=html;}
 async function runSearch(){
+  state.favView=false; updateFavBtn();
   const journals=state.activeJournal?CFG.journals.filter(j=>j.nick===state.activeJournal):CFG.journals;
   const fi=!!state.issueMode;
   setStatus((fi?'טוען את הגיליון המלא':'סורק את PubMed בזמן אמת')+'… <span class="spinner"></span>');
@@ -298,7 +305,10 @@ function applyView(){
     if(q&&!(a.title+' '+a.abstract).toLowerCase().includes(q))return false;
     return true;
   });
-  if(!state.issueMode){
+  if(state.favView){
+    list.sort((x,y)=>(sortBy==='date'?(''+(y.date||'')).localeCompare(''+(x.date||'')):y.importance-x.importance));
+    document.getElementById('countbar').innerHTML=`★ מועדפים · <b>${list.length}</b> מאמרים שמורים`;
+  } else if(!state.issueMode){
     // cap per journal by importance, tier-1 first
     list.sort((x,y)=>y.importance-x.importance);
     const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
@@ -337,12 +347,16 @@ function specialBadges(a){
   else if(pt.includes('editorial')) s+='<span class="tag t-pos">✍️ מאמר מערכת</span>';
   if(a.hasEditorial) s+='<span class="tag t-pos" title="פורסם עליו מאמר מערכת/פרשנות — סימן להתייחסות מיוחדת">⭐ זכה למאמר מערכת</span>';
   return s;}
-// צבעי מותג מזוהים לכל עיתון — לוורדמרק הבולט ולפס בשולי הכרטיס
-const JBRAND={'NEJM':'#C8102E','Lancet':'#6E1A1A','JAMA':'#003A70',
-  'AJOG':'#6C2D6B','Green Journal':'#1F7A3D','BJOG':'#00529B',
-  'Ultrasound O&G':'#0E7C7B','AJOG MFM':'#8E44AD','Gyn Oncology':'#B23A48',
-  'Fertility & Sterility':'#C77400'};
-function jBrand(n){return JBRAND[n]||'#5E584E';}
+// וורדמרק טיפוגרפי לכל עיתון — צבע מותג + סגנון גופן שמדמה את הלוגו (serif/condensed)
+const JLOGO={
+  'NEJM':{c:'#A6122B',f:'serif'}, 'Lancet':{c:'#8A1A2E',f:'serifi'}, 'JAMA':{c:'#B61F2E',f:'cond'},
+  'AJOG':{c:'#1F4E8C',f:'cond'}, 'Green Journal':{c:'#15673C',f:'serif'}, 'BJOG':{c:'#08589E',f:'cond'},
+  'Ultrasound O&G':{c:'#0E7C7B',f:'cond'}, 'AJOG MFM':{c:'#6A3FA0',f:'cond'},
+  'Gyn Oncology':{c:'#A23048',f:'serif'}, 'Fertility & Sterility':{c:'#B26B12',f:'serif'}};
+function jLogo(n){return JLOGO[n]||{c:'#5E584E',f:'cond'};}
+function jBrand(n){return jLogo(n).c;}
+function jLogoHTML(j){const lg=jLogo(j.nick),cls=lg.f==='serif'?'lg-serif':lg.f==='serifi'?'lg-serifi':'lg-cond';
+  return `<div class="jbrand ${cls}" style="color:${lg.c}">${j.tier===1?'<span style="color:var(--gold)">👑 </span>':''}${esc(j.nick)}</div>`;}
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
@@ -354,12 +368,13 @@ function cardHTML(a,i){
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
       <div style="flex:1">
-        <div class="jbrand" style="background:${jBrand(j.nick)}">${j.tier===1?'👑 ':''}${esc(j.nick)}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">${jLogoHTML(j)}<button class="favbtn${isFav(a.pmid)?' on':''}" title="הוסף למועדפים" onclick="toggleFav('${a.pmid}',this)">${isFav(a.pmid)?'★':'☆'}</button></div>
         <a class="ttl" dir="auto" href="https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/" target="_blank">${esc(a.title)}</a>
         <div class="meta"><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${metaBadge(a)}</span></div>
         <div class="tags">${tags}</div>
         <div class="actions">
           <button class="btn btn-primary" onclick="toggleAn('${a.pmid}',this)">⚡ ניתוח ביקורתי</button>
+          <button class="btn" onclick="pasteFullText('${a.pmid}')" title="נתח מטקסט מלא שתדביק">📋 טקסט מלא</button>
           <button class="btn" onclick="document.getElementById('ab-${a.pmid}').classList.toggle('open')">📄 תקציר</button>
           ${a.doi?`<a class="btn" href="https://doi.org/${esc(a.doi)}" target="_blank">🔗 מקור</a>`:''}
         </div>
@@ -369,6 +384,33 @@ function cardHTML(a,i){
     </div></div>`;
 }
 const LIVE_AN={};
+// ---- מועדפים ----
+function getFavs(){try{return JSON.parse(localStorage.getItem('lr_favs')||'{}');}catch(e){return {};}}
+function isFav(pmid){return !!getFavs()[pmid];}
+function favCount(){return Object.keys(getFavs()).length;}
+function toggleFav(pmid,btn){
+  const f=getFavs();
+  if(f[pmid])delete f[pmid];
+  else{const a=(state.articles||[]).find(x=>x.pmid===pmid)||f[pmid];if(a)f[pmid]=a;}
+  localStorage.setItem('lr_favs',JSON.stringify(f));
+  if(btn){const on=!!f[pmid];btn.innerHTML=on?'★':'☆';btn.classList.toggle('on',on);}
+  updateFavBtn(); if(state.favView)showFavs();
+}
+function updateFavBtn(){const b=document.getElementById('favViewBtn');if(b)b.innerHTML=(state.favView?'✕ סגור מועדפים':'★ מועדפים')+' ('+favCount()+')';}
+function showFavs(){
+  state.favView=true;exitIssue();
+  const favs=Object.values(getFavs());favs.forEach(a=>{if(!a.b)scoreOf(a);});
+  state.articles=favs;
+  setStatus(favs.length?'':'אין עדיין מאמרים במועדפים. לחץ ☆ על מאמר כדי לשמור.');
+  updateFavBtn();applyView();
+}
+function toggleFavView(){if(state.favView){state.favView=false;updateFavBtn();runSearch();}else showFavs();}
+// ---- ניתוח מטקסט מלא ----
+function pasteFullText(pmid){
+  const p=document.getElementById('an-'+pmid);p.classList.add('open');p.dataset.ready='';
+  p.innerHTML=`<div class="an-box"><b>📋 הדבק את הטקסט המלא של המאמר</b><div style="color:var(--muted);font-size:12px;margin-bottom:5px">היכנס למאמר דרך המנוי שלך (🔗 מקור), העתק את גוף המאמר והדבק כאן לניתוח מעמיק יותר.</div><textarea id="ft-${pmid}" placeholder="הדבק כאן…" style="width:100%;height:150px;border:1px solid var(--line);border-radius:9px;padding:9px;font-family:inherit;font-size:13px"></textarea><button class="btn btn-primary" style="margin-top:7px" onclick="runFull('${pmid}')">⚡ נתח טקסט מלא</button></div>`;
+}
+function runFull(pmid){const t=(document.getElementById('ft-'+pmid).value||'').trim();if(t.length<200){alert('הדבק טקסט ארוך יותר של המאמר (לפחות פסקה).');return;}analyzeLive(pmid,t);}
 function cleanKey(s){return (s||'').replace(/[^\x21-\x7E]/g,'');}  // רק ASCII נראה — בלי רווחים/שורות
 function setKey(){
   const cur=localStorage.getItem('lr_key')||'';
@@ -393,15 +435,16 @@ async function callClaude(user){
   if(s<0||e<0)throw new Error('לא הוחזר JSON תקין מהמודל');
   return JSON.parse(txt.slice(s,e+1));
 }
-async function analyzeLive(pmid){
+async function analyzeLive(pmid,fullText){
   const a=state.articles.find(x=>x.pmid===pmid),p=document.getElementById('an-'+pmid);if(!a||!p)return;
   if(!localStorage.getItem('lr_key')){p.innerHTML='<div class="an-info">להפעלת הניתוח הביקורתי החי דרוש מפתח Claude API.<br><button class="btn btn-primary" style="margin-top:8px" onclick="setKey()">🔑 הזן מפתח</button><br><small style="color:var(--muted)">נשמר רק בדפדפן שלך ונשלח אך ורק ל-Anthropic. השג ב-console.anthropic.com</small></div>';p.dataset.ready='1';return;}
   p.innerHTML='⏳ המבקר הקליני עובד… <span class="spinner"></span>';
   try{
-    const content=a.abstract||'';if(!content){p.innerHTML='<div class="an-info">אין תקציר לניתוח.</div>';p.dataset.ready='1';return;}
-    const payload=await callClaude(criticUserMsg(a,content,'ABSTRACT_ONLY'));
-    LIVE_AN[pmid]={payload,scope:'ABSTRACT_ONLY'};try{localStorage.setItem('lr_an_'+pmid,JSON.stringify(LIVE_AN[pmid]));}catch(e){}
-    p.innerHTML=analysisHTML(payload,'ABSTRACT_ONLY');p.dataset.ready='1';
+    const scope=fullText?'FULL_TEXT':'ABSTRACT_ONLY';
+    const content=fullText||a.abstract||'';if(!content){p.innerHTML='<div class="an-info">אין תוכן לניתוח. נסה "📋 טקסט מלא".</div>';p.dataset.ready='1';return;}
+    const payload=await callClaude(criticUserMsg(a,content,scope));
+    LIVE_AN[pmid]={payload,scope};try{localStorage.setItem('lr_an_'+pmid,JSON.stringify(LIVE_AN[pmid]));}catch(e){}
+    p.innerHTML=analysisHTML(payload,scope);p.dataset.ready='1';
   }catch(e){p.innerHTML='<div class="an-weak">שגיאת ניתוח: '+esc(String(e.message||e))+'</div><button class="btn" style="margin-top:6px" onclick="setKey()">🔑 עדכן מפתח</button>';}
 }
 function toggleAn(pmid,btn){
@@ -487,7 +530,7 @@ function init(){
   document.getElementById('perj').value=String(CFG.default_per_journal);
   const ts=document.getElementById('topic');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;ts.appendChild(o);});
   const tc=document.getElementById('trendCat');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;tc.appendChild(o);});
-  renderLegend();renderChips();runSearch();
+  updateFavBtn();renderLegend();renderChips();runSearch();
 }
 init();
 </script>

@@ -369,10 +369,12 @@ function cardHTML(a,i){
     </div></div>`;
 }
 const LIVE_AN={};
+function cleanKey(s){return (s||'').replace(/[^\x21-\x7E]/g,'');}  // רק ASCII נראה — בלי רווחים/שורות
 function setKey(){
   const cur=localStorage.getItem('lr_key')||'';
   const k=prompt('הדבק מפתח Claude API (sk-ant-…).\nנשמר אך ורק בדפדפן שלך ונשלח רק ל-Anthropic.\nהשג ב-console.anthropic.com', cur);
-  if(k!=null){localStorage.setItem('lr_key',k.trim());alert(k.trim()?'✓ המפתח נשמר. לחץ "⚡ ניתוח ביקורתי" על מאמר.':'המפתח נמחק.');}
+  if(k!=null){const c=cleanKey(k);localStorage.setItem('lr_key',c);
+    alert(c?(c.startsWith('sk-ant')?'✓ המפתח נשמר. לחץ "⚡ ניתוח ביקורתי" על מאמר.':'⚠ נשמר, אך המפתח לא נראה תקין (אמור להתחיל ב-sk-ant).'):'המפתח נמחק.');}
 }
 function loadLocalAn(pmid){if(LIVE_AN[pmid])return LIVE_AN[pmid];try{const s=localStorage.getItem('lr_an_'+pmid);if(s){LIVE_AN[pmid]=JSON.parse(s);return LIVE_AN[pmid];}}catch(e){}return null;}
 function criticUserMsg(a,content,scope){
@@ -380,7 +382,8 @@ function criticUserMsg(a,content,scope){
   return meta+`\n===== טקסט המאמר (${scope==='FULL_TEXT'?'טקסט מלא':'תקציר בלבד'}) =====\n${content}\n===== סוף הטקסט =====\n\nבצע את הניתוח המלא והחזר JSON תקין יחיד בלבד.`;
 }
 async function callClaude(user){
-  const key=localStorage.getItem('lr_key');
+  const key=cleanKey(localStorage.getItem('lr_key'));
+  if(!key) throw new Error('חסר מפתח. לחץ 🔑 ניתוח.');
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:CFG.analysis_model,max_tokens:4000,system:CFG.critic_prompt,messages:[{role:'user',content:user},{role:'assistant',content:'{'}]})});

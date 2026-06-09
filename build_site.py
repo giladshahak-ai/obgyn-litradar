@@ -11,7 +11,8 @@ from datetime import date
 from app import db
 from app.config import (JOURNALS, OBGYN_FILTER, HIGH_VALUE_FILTER, TOPIC_MAP,
                         DEFAULT_TOPIC, DESIGN_RANK, DESIGN_RANK_DEFAULT, SCORE_WEIGHTS,
-                        AUTHOR_HINDEX_TOP, IMPACT_FWCI_TOP, IMPACT_FLOOR,
+                        AUTHOR_HINDEX_TOP, IMPACT_FWCI_TOP,
+                        CITATION_MIN_MONTHS, CITATION_MATURE_MONTHS,
                         DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS,
                         DIGEST_MAX_TOTAL, TREND_TOPICS)
 
@@ -51,7 +52,8 @@ def build(today: str | None = None) -> Path:
         "weights": SCORE_WEIGHTS,
         "author_top": AUTHOR_HINDEX_TOP,
         "impact_fwci_top": IMPACT_FWCI_TOP,
-        "impact_floor": IMPACT_FLOOR,
+        "cit_min_months": CITATION_MIN_MONTHS,
+        "cit_mature_months": CITATION_MATURE_MONTHS,
         "default_window": DIGEST_WINDOW_DAYS,
         "default_per_journal": DIGEST_PER_JOURNAL,
         "max_total": DIGEST_MAX_TOTAL,
@@ -203,7 +205,7 @@ a{color:inherit;text-decoration:none}
 <div class="status" id="status"></div>
 <div class="feed" id="feed"></div>
 <div class="legend" id="legend"></div>
-<div class="explain">ℹ️ ציון = רמת ראיות ‎30%‎ + עיתון ‎20%‎ + מעמד חוקרים (h-index) ‎20%‎ + השפעה בפועל (ציטוטים/FWCI) ‎30%‎ · רחף מעל העיגול</div>
+<div class="explain">ℹ️ ציון מסתגל לגיל המאמר: מאמר טרי מדורג בעיקר לפי <b>רמת ראיות</b> (ציטוטים עדיין חסרי-משמעות); ככל שמתבגר, ה<b>השפעה בפועל</b> (FWCI/ציטוטים) נכנסת לתוקף · רחף מעל העיגול לפירוט</div>
 
 <div class="overlay" id="trendsOverlay">
   <div class="modal">
@@ -289,15 +291,23 @@ function designScore(a){const blob=(a.pub_types.join(' ')+' '+a.title).toLowerCa
 function journalScore(a){const j=journalOf(a);return (j?j.weight:4)/CFG.max_weight;}
 function authorScore(h){if(h==null)return 0.30;return Math.min(Math.log1p(Math.max(h,0))/Math.log1p(CFG.author_top),1);}
 function impactScore(fwci,cites){
-  let norm;
-  if(fwci!=null) norm=Math.min(Math.log1p(Math.max(fwci,0))/Math.log1p(CFG.impact_fwci_top),1);
-  else if(cites!=null) norm=Math.min(Math.log1p(Math.max(cites,0))/Math.log1p(100),1);
-  else return CFG.impact_floor;
-  return Math.max(CFG.impact_floor,norm);
+  if(fwci!=null) return Math.min(Math.log1p(Math.max(fwci,0))/Math.log1p(CFG.impact_fwci_top),1);
+  if(cites!=null) return Math.min(Math.log1p(Math.max(cites,0))/Math.log1p(100),1);
+  return 0;
 }
-function scoreOf(a){const d=designScore(a),jr=journalScore(a),au=authorScore(a.hindex),im=impactScore(a.fwci,a.citations);
-  const w=CFG.weights;const total=(w.design*d+w.journal*jr+w.author*au+w.impact*im)*100;
-  a.b={design:Math.round(d*100),journal:Math.round(jr*100),author:Math.round(au*100),impact:Math.round(im*100)};
+function maturity(dateStr){
+  if(!dateStr) return 0;
+  const months=(new Date(CFG.today_iso)-new Date(dateStr))/(1000*60*60*24*30.44);
+  const span=Math.max(CFG.cit_mature_months-CFG.cit_min_months,1);
+  return Math.max(0,Math.min((months-CFG.cit_min_months)/span,1));
+}
+function scoreOf(a){
+  const d=designScore(a),jr=journalScore(a),au=authorScore(a.hindex),im=impactScore(a.fwci,a.citations);
+  const m=maturity(a.date),w=CFG.weights;
+  const wi=w.impact*m, wd=w.design+w.impact*(1-m);           // משקל מסתגל לגיל
+  const total=(wd*d+w.journal*jr+w.author*au+wi*im)*100;
+  a.b={design:Math.round(d*100),journal:Math.round(jr*100),author:Math.round(au*100),
+       impact:Math.round(im*100),impW:Math.round(wi*100),mat:Math.round(m*100)};
   a.importance=Math.round(total*10)/10;return a.importance;}
 function metaBadge(a){let s='';if(a.hindex!=null)s+=' · 👤 h-index '+a.hindex;if(a.citations!=null&&a.citations>0)s+=' · 📊 '+a.citations+' ציטוטים';return s;}
 function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCase();let hits=CFG.topics.filter(([n,kw])=>kw.some(k=>strong.includes(k.toLowerCase()))).map(x=>x[0]);
@@ -372,7 +382,8 @@ function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
-  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''} · השפעה ${b.impact}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':(a.hindex==null?' (טוען…)':'')}`;
+  const fresh=(b.mat!=null&&b.mat<10);
+  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''}\nהשפעה בפועל ${b.impact!=null?b.impact:'?'}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':''} — משקל ${b.impW!=null?b.impW:0}%${fresh?'\n(מאמר טרי: מדורג בעיקר לפי רמת ראיות)':''}`;
   const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
   const an=ANALYSES[a.pmid];
   return `<div class="card${j.tier===1?' tier1':''}">

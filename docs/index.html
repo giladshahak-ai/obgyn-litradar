@@ -59,6 +59,7 @@ a{color:inherit;text-decoration:none}
 .ttl:hover{color:var(--brand)}
 .meta{color:var(--muted);font-size:13px;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .jpill{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:700;background:#5E584E}
+.jbrand{display:inline-block;font-family:'Frank Ruhl Libre',serif;font-weight:900;color:#fff;border-radius:9px;padding:5px 14px;font-size:15.5px;letter-spacing:.3px;box-shadow:0 2px 7px rgba(0,0,0,.13);margin-bottom:9px;line-height:1.2}
 .crown{color:var(--gold);font-weight:800}
 .tags{margin-top:11px;display:flex;gap:6px;flex-wrap:wrap}
 .tag{border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
@@ -319,9 +320,9 @@ function renderChips(){
   const counts={};state.articles.forEach(a=>{const j=journalOf(a);if(j)counts[j.nick]=(counts[j.nick]||0)+1;});
   const el=document.getElementById('chips');el.innerHTML='';
   const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{exitIssue();state.activeJournal=null;runSearch();};el.appendChild(all);
-  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{exitIssue();state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
+  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.style.borderRightColor=jBrand(j.nick);c.style.borderRightWidth='3px';c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{exitIssue();state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
 }
-function renderLegend(){document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+CFG.journals.map(j=>`<span>${j.tier===1?'👑':'<i class="dot" style="background:#7E94B0"></i>'}${esc(j.nick)}</span>`).join(' · ');}
+function renderLegend(){document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+CFG.journals.map(j=>`<span><i class="dot" style="background:${jBrand(j.nick)}"></i>${j.tier===1?'👑 ':''}${esc(j.nick)}</span>`).join(' · ');}
 
 function ringCls(v){return v>=65?'r-hi':v>=52?'r-mid':'r-lo';}
 function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
@@ -336,6 +337,12 @@ function specialBadges(a){
   else if(pt.includes('editorial')) s+='<span class="tag t-pos">✍️ מאמר מערכת</span>';
   if(a.hasEditorial) s+='<span class="tag t-pos" title="פורסם עליו מאמר מערכת/פרשנות — סימן להתייחסות מיוחדת">⭐ זכה למאמר מערכת</span>';
   return s;}
+// צבעי מותג מזוהים לכל עיתון — לוורדמרק הבולט ולפס בשולי הכרטיס
+const JBRAND={'NEJM':'#C8102E','Lancet':'#6E1A1A','JAMA':'#003A70',
+  'AJOG':'#6C2D6B','Green Journal':'#1F7A3D','BJOG':'#00529B',
+  'Ultrasound O&G':'#0E7C7B','AJOG MFM':'#8E44AD','Gyn Oncology':'#B23A48',
+  'Fertility & Sterility':'#C77400'};
+function jBrand(n){return JBRAND[n]||'#5E584E';}
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
@@ -343,12 +350,13 @@ function cardHTML(a,i){
   const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''}\nהשפעה בפועל ${b.impact!=null?b.impact:'?'}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':''} — משקל ${b.impW!=null?b.impW:0}%${fresh?'\n(מאמר טרי: מדורג בעיקר לפי רמת ראיות)':''}`;
   const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+specialBadges(a)+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
   const an=ANALYSES[a.pmid]||loadLocalAn(a.pmid);
-  return `<div class="card${j.tier===1?' tier1':''}">
+  return `<div class="card${j.tier===1?' tier1':''}" style="border-right:6px solid ${jBrand(j.nick)}">
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
       <div style="flex:1">
+        <div class="jbrand" style="background:${jBrand(j.nick)}">${j.tier===1?'👑 ':''}${esc(j.nick)}</div>
         <a class="ttl" dir="auto" href="https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/" target="_blank">${esc(a.title)}</a>
-        <div class="meta"><span class="jpill" style="background:${j.tier===1?'#B98E3C':'#5E584E'}">${j.tier===1?'👑 ':''}${esc(j.nick)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${metaBadge(a)}</span></div>
+        <div class="meta"><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${metaBadge(a)}</span></div>
         <div class="tags">${tags}</div>
         <div class="actions">
           <button class="btn btn-primary" onclick="toggleAn('${a.pmid}',this)">⚡ ניתוח ביקורתי</button>

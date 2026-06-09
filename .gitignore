@@ -1,0 +1,9 @@
+.env
+litradar.db
+.browser_profile/
+__pycache__/
+*.pyc
+.venv/
+venv/
+site/
+fetch_log.txt

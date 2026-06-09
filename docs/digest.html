@@ -64,6 +64,7 @@ a{color:inherit;text-decoration:none}
 .tag{border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
 .t-star{background:var(--star-bg);color:var(--star-fg)}
 .t-topic{background:var(--chip-bg);color:var(--chip-fg)}
+.t-pos{background:#F6E6C8;color:#8A6B33;font-weight:700;border:1px solid #E4CFA0}
 .actions{margin-top:14px;display:flex;gap:9px;flex-wrap:wrap}
 .panel{margin-top:14px;border-top:1px dashed var(--line);padding-top:14px;display:none}
 .panel.open{display:block}
@@ -117,6 +118,7 @@ a{color:inherit;text-decoration:none}
     </select></div>
   <div class="ctl"><label>מ-תאריך</label><input type="date" class="dateinp" id="from" onchange="customDate()"></div>
   <div class="ctl"><label>עד</label><input type="date" class="dateinp" id="to" onchange="customDate()"></div>
+  <div class="ctl"><label>גיליון מלא</label><input type="month" class="dateinp" id="issueMonth" title="הצג את כל מאמרי הגיליון (בחר עיתון יחיד תחילה)" onchange="onIssueMonth()"></div>
   <div class="ctl"><label>מקס׳/עיתון</label>
     <select class="sortsel" id="perj" onchange="applyView()">
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
@@ -126,6 +128,7 @@ a{color:inherit;text-decoration:none}
   <div class="ctl"><label>מיון</label><select class="sortsel" id="sort" onchange="applyView()"><option value="imp">חשיבות</option><option value="date">תאריך</option></select></div>
   <button class="btn btn-primary" onclick="runSearch()">🔄 חפש</button>
   <button class="btn btn-trend" onclick="openTrends()">📈 מגמות בתחום</button>
+  <button class="btn" onclick="setKey()" title="מפתח Claude API לניתוח ביקורתי חי (נשמר רק בדפדפן)">🔑 ניתוח</button>
 </div>
 <div class="chips" id="chips"></div>
 <div class="countbar" id="countbar"></div>
@@ -139,13 +142,15 @@ a{color:inherit;text-decoration:none}
     <button class="closeX" onclick="closeTrends()">✕</button>
     <h2>📈 מגמות בתחום</h2>
     <div class="sub" style="color:var(--muted);font-size:13px;margin-bottom:10px">גידול בנפח הפרסום ב-PubMed: 12 חודשים אחרונים מול 12 הקודמים</div>
+    <div style="margin-bottom:12px"><label style="font-size:13px;color:var(--muted)">נושא: </label>
+      <select class="sortsel" id="trendCat" onchange="openTrends()"><option value="">כל הנושאים</option></select></div>
     <div id="trendsBody"></div>
   </div>
 </div>
 <div class="fab"><button title="חזרה למעלה" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button></div>
 
 <script>
-const CFG = {"journals": [{"nick": "NEJM", "issn": "0028-4793", "issn_e": "1533-4406", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "Lancet", "issn": "0140-6736", "issn_e": "1474-547X", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "JAMA", "issn": "0098-7484", "issn_e": "1538-3598", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "AJOG", "issn": "0002-9378", "issn_e": "1097-6868", "weight": 9, "tier": 2, "filter_obgyn": false}, {"nick": "Green Journal", "issn": "0029-7844", "issn_e": "1873-233X", "weight": 9, "tier": 2, "filter_obgyn": false}, {"nick": "BJOG", "issn": "1470-0328", "issn_e": "1471-0528", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "Ultrasound O&G", "issn": "0960-7692", "issn_e": "1469-0705", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "AJOG MFM", "issn": "2589-9333", "issn_e": "2589-9333", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "Gyn Oncology", "issn": "0090-8258", "issn_e": "1095-6859", "weight": 7, "tier": 2, "filter_obgyn": false}, {"nick": "Fertility & Sterility", "issn": "0015-0282", "issn_e": "1556-5653", "weight": 8, "tier": 2, "filter_obgyn": false}], "max_weight": 10, "obgyn_filter": "(\"Obstetrics\"[Mesh] OR \"Gynecology\"[Mesh] OR \"Pregnancy\"[Mesh] OR \"Pregnancy Complications\"[Mesh] OR \"Genital Diseases, Female\"[Mesh] OR \"Reproductive Medicine\"[Mesh] OR \"Reproductive Techniques, Assisted\"[Mesh] OR \"Labor, Obstetric\"[Mesh] OR \"Prenatal Care\"[Mesh] OR pregnan*[tiab] OR obstetric*[tiab] OR gyneco*[tiab] OR gynaeco*[tiab] OR cesarean[tiab] OR caesarean[tiab] OR preeclampsia[tiab] OR \"pre-eclampsia\"[tiab] OR eclampsia[tiab] OR endometri*[tiab] OR menopaus*[tiab] OR \"preterm birth\"[tiab] OR stillbirth[tiab] OR \"in vitro fertilization\"[tiab] OR \"in vitro fertilisation\"[tiab] OR contracepti*[tiab] OR \"cervical cancer\"[tiab] OR \"ovarian cancer\"[tiab])", "high_value_filter": "(\"Randomized Controlled Trial\"[ptyp] OR \"Meta-Analysis\"[ptyp] OR \"Systematic Review\"[ptyp] OR \"Practice Guideline\"[ptyp] OR \"Guideline\"[ptyp] OR \"Clinical Trial, Phase III\"[ptyp] OR \"Clinical Trial, Phase IV\"[ptyp] OR \"Consensus Development Conference\"[ptyp] OR randomized[ti] OR randomised[ti] OR \"randomized controlled\"[tiab] OR \"randomised controlled\"[tiab] OR \"meta-analysis\"[ti] OR metaanalysis[ti] OR \"systematic review\"[ti] OR \"phase 3\"[ti] OR \"phase III\"[ti] OR \"phase 3\"[tiab] OR \"practice guideline\"[ti] OR \"clinical practice guideline\"[ti] OR \"committee opinion\"[ti] OR \"consensus statement\"[ti] OR guideline[ti])", "topics": [["מיילדות", ["Pregnan", "Obstetric", "Pre-Eclampsia", "Preeclampsia", "Eclampsia", "Gestational", "Premature Birth", "Preterm", "Ectopic", "Miscarriage", "Abortion", "Stillbirth", "Twin", "Antenatal", "Corticosteroid", "Labor", "Labour", "Delivery", "Cesarean", "Caesarean", "Parturition", "Postpartum", "Fetal", "Fetus", "Foetal", "Prenatal", "Amniocentesis", "Placenta", "Doppler", "Maternal", "Perinatal", "Neonatal"]], ["פוריות", ["Reproductive Techniques", "Fertilization in Vitro", "Infertility", "Subfertility", "Ovulation Induction", "Embryo", "Sperm", "Oocyte", "IVF", "ICSI", "Assisted Reproduct", "Fertility Preservation", "Frozen Embryo", "Blastocyst"]], ["אנדוקרינולוגיה", ["Polycystic Ovary", "PCOS", "Menopaus", "Amenorrhea", "Hormone Replacement", "Hot Flash", "Vasomotor", "Menstruation Disturbances", "Hyperandrogen", "Hyperprolactin", "Hypogonad", "Estrogen", "Androgen", "Endocrine"]], ["אונקוגינקולוגיה", ["Neoplasm", "Cancer", "Carcinoma", "Tumor", "Tumour", "Oncolog", "Malignan", "Sarcoma", "Cervical Intraepithelial", "Trophoblastic"]], ["אנדומטריוזיס", ["Endometriosis", "Adenomyosis", "Pelvic Pain", "Dysmenorrhea"]], ["גינקולוגיה כללית", ["Hysterectomy", "Leiomyoma", "Fibroid", "Contraception", "Heavy Menstrual", "Menorrhagia", "Pelvic Floor", "Urinary Incontinence", "Pelvic Organ Prolapse", "Sexually Transmitted", "Vaginosis", "Papillomavirus", "Pelvic Inflammatory", "Gynecologic Surgical", "Laparoscop", "Hysteroscop", "Vulva", "Cervical Cancer Screening", "Papanicolaou"]]], "default_topic": "גינקולוגיה כללית", "design_rank": [[["Meta-Analysis", "Meta-analysis", "Systematic Review"], 1.0], [["Randomized Controlled Trial", "Randomized", "Randomised", "RCT", "Double-Blind", "Placebo-Controlled"], 0.9], [["Clinical Trial", "Controlled Clinical Trial"], 0.7], [["Multicenter Study", "Multicentre", "Comparative Study"], 0.6], [["Observational Study", "Cohort", "Prospective", "Population-Based"], 0.55], [["Case-Control"], 0.45], [["Review", "Practice Guideline", "Guideline", "Committee Opinion"], 0.5], [["Case Report", "Case Reports", "Case Series"], 0.2], [["Editorial", "Comment", "Letter"], 0.1]], "design_default": 0.35, "weights": {"design": 0.3, "journal": 0.15, "author": 0.15, "impact": 0.4}, "author_top": 50, "impact_fwci_top": 20, "cit_min_months": 6, "cit_mature_months": 24, "default_window": 14, "default_per_journal": 3, "max_total": 30, "trend_topics": [["GLP-1 / סמגלוטייד בהריון ו-PCOS", "(semaglutide[tiab] OR \"GLP-1\"[tiab] OR tirzepatide[tiab]) AND (pregnan*[tiab] OR \"polycystic ovary\"[tiab] OR fertilit*[tiab])"], ["השראת לידה בשבוע 39", "\"induction of labor\"[tiab] AND (\"39 weeks\"[tiab] OR \"elective induction\"[tiab])"], ["השראת לידה במאקרוזומיה", "\"induction of labor\"[tiab] AND (macrosomia[tiab] OR \"large for gestational age\"[tiab] OR \"suspected macrosomia\"[tiab])"], ["טכניקת סגירת הרחם בקיסרי", "(cesarean[tiab] OR caesarean[tiab]) AND ((\"uterine closure\"[tiab] OR \"double layer\"[tiab] OR \"single layer\"[tiab]) OR niche[tiab] OR isthmocele[tiab])"], ["חומצה טרנקסמית לדימום אחרי לידה", "\"tranexamic acid\"[tiab] AND (\"postpartum hemorrhage\"[tiab] OR \"postpartum haemorrhage\"[tiab])"], ["אספירין למניעת רעלת הריון", "(\"low-dose aspirin\"[tiab] OR aspirin[tiab]) AND (preeclampsia[tiab] OR \"pre-eclampsia[tiab]\")"], ["PGT-A — בדיקה גנטית טרום-השרשה", "(\"preimplantation genetic testing\"[tiab] OR \"PGT-A\"[tiab] OR aneuploidy[tiab]) AND (embryo[tiab] OR IVF[tiab])"], ["טיפול תרופתי באנדומטריוזיס (GnRH)", "endometriosis[tiab] AND (elagolix[tiab] OR relugolix[tiab] OR \"GnRH antagonist\"[tiab] OR dienogest[tiab])"], ["דגימה עצמית ל-HPV", "(\"self-sampling\"[tiab] OR \"self-collection\"[tiab]) AND (HPV[tiab] OR \"cervical cancer\"[tiab])"], ["ניתוח עוברי תוך-רחמי", "(\"fetal surgery\"[tiab] OR \"in utero\"[tiab] OR \"intrauterine surgery\"[tiab]) AND (spina bifida[tiab] OR myelomeningocele[tiab] OR fetoscop*[tiab])"], ["פרוגסטרון למניעת לידה מוקדמת", "progesterone[tiab] AND (\"preterm birth\"[tiab] OR \"preterm labor\"[tiab])"], ["השתלת רחם", "\"uterus transplantation\"[tiab] OR \"uterine transplantation\"[tiab]"], ["בינה מלאכותית באולטרסאונד מיילדותי", "(\"artificial intelligence\"[tiab] OR \"deep learning\"[tiab] OR \"machine learning\"[tiab]) AND (ultrasound[tiab] OR fetal[tiab] OR obstetric[tiab])"], ["NIPT / cfDNA מורחב", "(\"cell-free DNA\"[tiab] OR \"cfDNA\"[tiab] OR \"noninvasive prenatal\"[tiab]) AND (screening[tiab] OR microdeletion[tiab])"], ["מטפורמין בסוכרת הריון", "metformin[tiab] AND (\"gestational diabetes\"[tiab] OR pregnancy[tiab])"], ["בחירת עוברים מבוססת AI / time-lapse", "(\"time-lapse\"[tiab] OR \"artificial intelligence\"[tiab]) AND (embryo[tiab] OR blastocyst[tiab])"], ["העברת עובר מוקפא מול טרי", "(\"frozen embryo transfer\"[tiab] OR \"freeze-all\"[tiab]) AND (live birth[tiab] OR pregnancy rate[tiab])"], ["מגנזיום להגנה נוירולוגית עוברית", "\"magnesium sulfate\"[tiab] AND (neuroprotection[tiab] OR \"cerebral palsy\"[tiab] OR preterm[tiab])"], ["פסר/תפר צווארי", "(cerclage[tiab] OR pessary[tiab]) AND (\"preterm birth\"[tiab] OR \"cervical insufficiency\"[tiab] OR \"short cervix\"[tiab])"], ["לטרוזול להשראת ביוץ", "letrozole[tiab] AND (ovulation[tiab] OR \"polycystic ovary\"[tiab] OR infertility[tiab])"], ["מיקרוביום נרתיקי ובריאות רבייה", "microbiome[tiab] AND (vaginal[tiab] OR endometri*[tiab] OR pregnancy[tiab])"], ["תמיכת דולה בלידה", "doula[tiab] AND (birth[tiab] OR labor[tiab] OR delivery[tiab])"], ["רלוגוליקס לשרירנים", "relugolix[tiab] AND (fibroid[tiab] OR leiomyoma[tiab] OR \"uterine bleeding\"[tiab])"], ["הידוק מאוחר של חבל הטבור", "(\"delayed cord clamping\"[tiab] OR \"umbilical cord milking\"[tiab])"], ["דיאטה ים-תיכונית בהריון", "\"mediterranean diet\"[tiab] AND (pregnan*[tiab] OR \"gestational\"[tiab])"], ["אימונותרפיה בסרטן שחלה/רחם", "(pembrolizumab[tiab] OR immunotherapy[tiab] OR \"checkpoint inhibitor\"[tiab]) AND (ovarian[tiab] OR endometrial[tiab] OR cervical[tiab])"]], "generated": "09/06/2026", "today_iso": "2026-06-09"};
+const CFG = {"journals": [{"nick": "NEJM", "issn": "0028-4793", "issn_e": "1533-4406", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "Lancet", "issn": "0140-6736", "issn_e": "1474-547X", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "JAMA", "issn": "0098-7484", "issn_e": "1538-3598", "weight": 10, "tier": 1, "filter_obgyn": true}, {"nick": "AJOG", "issn": "0002-9378", "issn_e": "1097-6868", "weight": 9, "tier": 2, "filter_obgyn": false}, {"nick": "Green Journal", "issn": "0029-7844", "issn_e": "1873-233X", "weight": 9, "tier": 2, "filter_obgyn": false}, {"nick": "BJOG", "issn": "1470-0328", "issn_e": "1471-0528", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "Ultrasound O&G", "issn": "0960-7692", "issn_e": "1469-0705", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "AJOG MFM", "issn": "2589-9333", "issn_e": "2589-9333", "weight": 8, "tier": 2, "filter_obgyn": false}, {"nick": "Gyn Oncology", "issn": "0090-8258", "issn_e": "1095-6859", "weight": 7, "tier": 2, "filter_obgyn": false}, {"nick": "Fertility & Sterility", "issn": "0015-0282", "issn_e": "1556-5653", "weight": 8, "tier": 2, "filter_obgyn": false}], "max_weight": 10, "obgyn_filter": "(\"Obstetrics\"[Mesh] OR \"Gynecology\"[Mesh] OR \"Pregnancy\"[Mesh] OR \"Pregnancy Complications\"[Mesh] OR \"Genital Diseases, Female\"[Mesh] OR \"Reproductive Medicine\"[Mesh] OR \"Reproductive Techniques, Assisted\"[Mesh] OR \"Labor, Obstetric\"[Mesh] OR \"Prenatal Care\"[Mesh] OR pregnan*[tiab] OR obstetric*[tiab] OR gyneco*[tiab] OR gynaeco*[tiab] OR cesarean[tiab] OR caesarean[tiab] OR preeclampsia[tiab] OR \"pre-eclampsia\"[tiab] OR eclampsia[tiab] OR endometri*[tiab] OR menopaus*[tiab] OR \"preterm birth\"[tiab] OR stillbirth[tiab] OR \"in vitro fertilization\"[tiab] OR \"in vitro fertilisation\"[tiab] OR contracepti*[tiab] OR \"cervical cancer\"[tiab] OR \"ovarian cancer\"[tiab])", "high_value_filter": "(\"Randomized Controlled Trial\"[ptyp] OR \"Meta-Analysis\"[ptyp] OR \"Systematic Review\"[ptyp] OR \"Practice Guideline\"[ptyp] OR \"Guideline\"[ptyp] OR \"Clinical Trial, Phase III\"[ptyp] OR \"Clinical Trial, Phase IV\"[ptyp] OR \"Consensus Development Conference\"[ptyp] OR randomized[ti] OR randomised[ti] OR \"randomized controlled\"[tiab] OR \"randomised controlled\"[tiab] OR \"meta-analysis\"[ti] OR metaanalysis[ti] OR \"systematic review\"[ti] OR \"phase 3\"[ti] OR \"phase III\"[ti] OR \"phase 3\"[tiab] OR \"practice guideline\"[ti] OR \"clinical practice guideline\"[ti] OR \"committee opinion\"[ti] OR \"consensus statement\"[ti] OR guideline[ti])", "topics": [["מיילדות", ["Pregnan", "Obstetric", "Pre-Eclampsia", "Preeclampsia", "Eclampsia", "Gestational", "Premature Birth", "Preterm", "Ectopic", "Miscarriage", "Abortion", "Stillbirth", "Twin", "Antenatal", "Corticosteroid", "Labor", "Labour", "Delivery", "Cesarean", "Caesarean", "Parturition", "Postpartum", "Fetal", "Fetus", "Foetal", "Prenatal", "Amniocentesis", "Placenta", "Doppler", "Maternal", "Perinatal", "Neonatal"]], ["פוריות", ["Reproductive Techniques", "Fertilization in Vitro", "Infertility", "Subfertility", "Ovulation Induction", "Embryo", "Sperm", "Oocyte", "IVF", "ICSI", "Assisted Reproduct", "Fertility Preservation", "Frozen Embryo", "Blastocyst"]], ["אנדוקרינולוגיה", ["Polycystic Ovary", "PCOS", "Menopaus", "Amenorrhea", "Hormone Replacement", "Hot Flash", "Vasomotor", "Menstruation Disturbances", "Hyperandrogen", "Hyperprolactin", "Hypogonad", "Estrogen", "Androgen", "Endocrine"]], ["אונקוגינקולוגיה", ["Neoplasm", "Cancer", "Carcinoma", "Tumor", "Tumour", "Oncolog", "Malignan", "Sarcoma", "Cervical Intraepithelial", "Trophoblastic"]], ["אנדומטריוזיס", ["Endometriosis", "Adenomyosis", "Pelvic Pain", "Dysmenorrhea"]], ["גינקולוגיה כללית", ["Hysterectomy", "Leiomyoma", "Fibroid", "Contraception", "Heavy Menstrual", "Menorrhagia", "Pelvic Floor", "Urinary Incontinence", "Pelvic Organ Prolapse", "Sexually Transmitted", "Vaginosis", "Papillomavirus", "Pelvic Inflammatory", "Gynecologic Surgical", "Laparoscop", "Hysteroscop", "Vulva", "Cervical Cancer Screening", "Papanicolaou"]]], "default_topic": "גינקולוגיה כללית", "design_rank": [[["Meta-Analysis", "Meta-analysis", "Systematic Review"], 1.0], [["Randomized Controlled Trial", "Randomized", "Randomised", "RCT", "Double-Blind", "Placebo-Controlled"], 0.9], [["Clinical Trial", "Controlled Clinical Trial"], 0.7], [["Multicenter Study", "Multicentre", "Comparative Study"], 0.6], [["Observational Study", "Cohort", "Prospective", "Population-Based"], 0.55], [["Case-Control"], 0.45], [["Review", "Practice Guideline", "Guideline", "Committee Opinion"], 0.5], [["Case Report", "Case Reports", "Case Series"], 0.2], [["Editorial", "Comment", "Letter"], 0.1]], "design_default": 0.35, "weights": {"design": 0.3, "journal": 0.15, "author": 0.15, "impact": 0.4}, "author_top": 50, "impact_fwci_top": 20, "cit_min_months": 6, "cit_mature_months": 24, "default_window": 14, "default_per_journal": 3, "max_total": 30, "trend_topics": [["GLP-1 / סמגלוטייד בהריון ו-PCOS", "(semaglutide[tiab] OR \"GLP-1\"[tiab] OR tirzepatide[tiab]) AND (pregnan*[tiab] OR \"polycystic ovary\"[tiab] OR fertilit*[tiab])", "אנדוקרינולוגיה"], ["השראת לידה בשבוע 39", "\"induction of labor\"[tiab] AND (\"39 weeks\"[tiab] OR \"elective induction\"[tiab])", "מיילדות"], ["השראת לידה במאקרוזומיה", "\"induction of labor\"[tiab] AND (macrosomia[tiab] OR \"large for gestational age\"[tiab] OR \"suspected macrosomia\"[tiab])", "מיילדות"], ["טכניקת סגירת הרחם בקיסרי", "(cesarean[tiab] OR caesarean[tiab]) AND ((\"uterine closure\"[tiab] OR \"double layer\"[tiab] OR \"single layer\"[tiab]) OR niche[tiab] OR isthmocele[tiab])", "מיילדות"], ["חומצה טרנקסמית לדימום אחרי לידה", "\"tranexamic acid\"[tiab] AND (\"postpartum hemorrhage\"[tiab] OR \"postpartum haemorrhage\"[tiab])", "מיילדות"], ["אספירין למניעת רעלת הריון", "(\"low-dose aspirin\"[tiab] OR aspirin[tiab]) AND (preeclampsia[tiab] OR \"pre-eclampsia[tiab]\")", "מיילדות"], ["PGT-A — בדיקה גנטית טרום-השרשה", "(\"preimplantation genetic testing\"[tiab] OR \"PGT-A\"[tiab] OR aneuploidy[tiab]) AND (embryo[tiab] OR IVF[tiab])", "פוריות"], ["טיפול תרופתי באנדומטריוזיס (GnRH)", "endometriosis[tiab] AND (elagolix[tiab] OR relugolix[tiab] OR \"GnRH antagonist\"[tiab] OR dienogest[tiab])", "אנדומטריוזיס"], ["דגימה עצמית ל-HPV", "(\"self-sampling\"[tiab] OR \"self-collection\"[tiab]) AND (HPV[tiab] OR \"cervical cancer\"[tiab])", "אונקוגינקולוגיה"], ["ניתוח עוברי תוך-רחמי", "(\"fetal surgery\"[tiab] OR \"in utero\"[tiab] OR \"intrauterine surgery\"[tiab]) AND (spina bifida[tiab] OR myelomeningocele[tiab] OR fetoscop*[tiab])", "מיילדות"], ["פרוגסטרון למניעת לידה מוקדמת", "progesterone[tiab] AND (\"preterm birth\"[tiab] OR \"preterm labor\"[tiab])", "מיילדות"], ["השתלת רחם", "\"uterus transplantation\"[tiab] OR \"uterine transplantation\"[tiab]", "פוריות"], ["בינה מלאכותית באולטרסאונד מיילדותי", "(\"artificial intelligence\"[tiab] OR \"deep learning\"[tiab] OR \"machine learning\"[tiab]) AND (ultrasound[tiab] OR fetal[tiab] OR obstetric[tiab])", "מיילדות"], ["NIPT / cfDNA מורחב", "(\"cell-free DNA\"[tiab] OR \"cfDNA\"[tiab] OR \"noninvasive prenatal\"[tiab]) AND (screening[tiab] OR microdeletion[tiab])", "מיילדות"], ["מטפורמין בסוכרת הריון", "metformin[tiab] AND (\"gestational diabetes\"[tiab] OR pregnancy[tiab])", "מיילדות"], ["בחירת עוברים מבוססת AI / time-lapse", "(\"time-lapse\"[tiab] OR \"artificial intelligence\"[tiab]) AND (embryo[tiab] OR blastocyst[tiab])", "פוריות"], ["העברת עובר מוקפא מול טרי", "(\"frozen embryo transfer\"[tiab] OR \"freeze-all\"[tiab]) AND (live birth[tiab] OR pregnancy rate[tiab])", "פוריות"], ["מגנזיום להגנה נוירולוגית עוברית", "\"magnesium sulfate\"[tiab] AND (neuroprotection[tiab] OR \"cerebral palsy\"[tiab] OR preterm[tiab])", "מיילדות"], ["פסר/תפר צווארי", "(cerclage[tiab] OR pessary[tiab]) AND (\"preterm birth\"[tiab] OR \"cervical insufficiency\"[tiab] OR \"short cervix\"[tiab])", "מיילדות"], ["לטרוזול להשראת ביוץ", "letrozole[tiab] AND (ovulation[tiab] OR \"polycystic ovary\"[tiab] OR infertility[tiab])", "פוריות"], ["מיקרוביום נרתיקי ובריאות רבייה", "microbiome[tiab] AND (vaginal[tiab] OR endometri*[tiab] OR pregnancy[tiab])", "גינקולוגיה כללית"], ["תמיכת דולה בלידה", "doula[tiab] AND (birth[tiab] OR labor[tiab] OR delivery[tiab])", "מיילדות"], ["רלוגוליקס לשרירנים", "relugolix[tiab] AND (fibroid[tiab] OR leiomyoma[tiab] OR \"uterine bleeding\"[tiab])", "גינקולוגיה כללית"], ["הידוק מאוחר של חבל הטבור", "(\"delayed cord clamping\"[tiab] OR \"umbilical cord milking\"[tiab])", "מיילדות"], ["דיאטה ים-תיכונית בהריון", "\"mediterranean diet\"[tiab] AND (pregnan*[tiab] OR \"gestational\"[tiab])", "מיילדות"], ["אימונותרפיה בסרטן שחלה/רחם", "(pembrolizumab[tiab] OR immunotherapy[tiab] OR \"checkpoint inhibitor\"[tiab]) AND (ovarian[tiab] OR endometrial[tiab] OR cervical[tiab])", "אונקוגינקולוגיה"]], "critic_prompt": "# ROLE\nאתה \"המבקר הקליני\" — פאנל וירטואלי של שלושה מומחים בגוף אחד:\n(1) אפידמיולוג קליני בכיר, מומחה ל-critical appraisal ולמתודולוגיה;\n(2) ביוסטטיסטיקאי עם עין חדה לטריקים סטטיסטיים ול-spin;\n(3) רופא/ה בכיר/ה במיילדות וגינקולוגיה ששואל/ת רק שאלה אחת: \"האם זה משנה את מה שאעשה מחר בבוקר במחלקה?\".\nשלושתכם ביקורתיים, הוגנים, ובלתי-מתפשרים על אמת. אינכם מתרשמים משמות עיתונים יוקרתיים.\n\n# חוקי ברזל (אי-ציות = כשל)\n1. אפס הזיות. אם נתון לא מופיע במקור (גודל מדגם, רווח סמך, מקור מימון) — כתוב במפורש \"לא דווח\". לעולם אל תמציא מספרים, ערכי p, או ציטוטים.\n2. שקיפות מקור. אם הקלט מסומן ABSTRACT_ONLY — הנתונים חלקיים; ציין זאת ב-source_scope_warning והימנע מקביעות על פרטים שלא מופיעים בתקציר.\n3. הפרד עובדה מפרשנות. מה שהמחברים טוענים ≠ מה שהנתונים מראים. תפקידך לחשוף את הפער.\n4. כתוב בעברית קלינית, חדה, נטולת מליצות. מותר ורצוי להיות חד וישיר.\n\n# מסגרת הניתוח — עבור דרך כל העדשות הבאות לפני שתכתוב פלט\n## עדשה 1 — שאלה ותכנון (PICO + התאמת תכנון)\nמהי שאלת המחקר (PICO)? האם התכנון מתאים לענות עליה? היכן במדרג הראיות (RCT > cohort > case-control > case series > opinion)?\n## עדשה 2 — ציד הטיות\nסרוק במפורש: Selection bias · Confounding (תוקנו? אילו משתנים הוזנחו?) · Performance/Detection (blinding?) · Attrition (כמה נשרו? ITT או per-protocol?) · Reporting/Publication bias. לכל הטיה: חומרה והשפעה על המסקנה.\n## עדשה 3 — רנטגן סטטיסטי\nהצדקת גודל מדגם (power)? תוצא ראשוני אמיתי או fishing ב-secondary? מובהקות סטטיסטית מול קלינית? דווח effect size (RR/OR/HR + רווח סמך), לא רק p. חפש: composite/surrogate outcomes, RR שמנפח אפקט מוחלט קטן (NNT?), p-hacking, subgroup לא מתוקן.\n## עדשה 4 — גלאי spin\nהאם המסקנות גדולות מהנתונים? תוצאה לא-מובהקת שמוצגת כ\"מגמה מבטיחה\"? צטט שורה אחת \"מנפחת\" והעמד מולה את מה שהנתון באמת אומר.\n## עדשה 5 — מימון וניגודי עניינים\nמי מימן? אינטרס של יצרן בתוצאה? הצהרות חשודות?\n## עדשה 6 — תוקף חיצוני\nהאוכלוסייה דומה למטופלות בארץ/במחלקה? בר-יישום? מה ה-bottom line הקליני?\n\n# OUTPUT\nהחזר אך ורק JSON תקין יחיד, ללא טקסט נלווה, התואם בדיוק לסכמה הזו:\n{\n  \"verdict_line\": \"שורת מחץ אחת, עד 20 מילים: מה הסיפור והאם להאמין לו\",\n  \"critic_score\": 1-5,\n  \"score_rationale\": \"משפט אחד שמנמק את הציון\",\n  \"evidence_level\": \"רמת Oxford CEBM + GRADE (High/Moderate/Low/Very-low)\",\n  \"source_scope_warning\": \"ריק אם FULL_TEXT, אחרת אזהרה שהניתוח מבוסס תקציר בלבד\",\n  \"study_snapshot\": {\n    \"design\": \"...\", \"population\": \"...\", \"n\": \"מספר או 'לא דווח'\",\n    \"intervention\": \"...\", \"primary_outcome\": \"...\",\n    \"key_result\": \"כולל effect size ורווח סמך אם דווחו\"\n  },\n  \"strengths\": [\"3-5 חוזקות קונקרטיות, לא קלישאות\"],\n  \"weaknesses\": [\n    {\"issue\": \"...\", \"severity\": \"נמוכה|בינונית|גבוהה\", \"impact\": \"איך זה פוגע במסקנה\"}\n  ],\n  \"spin_alert\": {\"detected\": true, \"quote\": \"...\", \"reality\": \"...\"},\n  \"stats_red_flags\": [\"דגלים אדומים סטטיסטיים, או [] אם אין\"],\n  \"clinical_bottom_line\": \"2-3 משפטים: האם ואיך זה משנה פרקטיקה במיילדות/גינקולוגיה\",\n  \"what_would_change_my_mind\": \"איזה נתון/מחקר היה הופך את ההכרעה\",\n  \"devils_advocate\": \"פסקה אחת שתוקפת בכוונה את הביקורת שלך — הצד החזק ביותר שאולי פוספס\",\n  \"one_liner_for_rounds\": \"משפט לציטוט בויזיט/בג'רנל קלאב\"\n}", "analysis_model": "claude-sonnet-4-6", "generated": "09/06/2026", "today_iso": "2026-06-09"};
 const ANALYSES = {"42128454": {"payload": {"verdict_line": "RCT איכותי וכפול-סמיות: חומצה טרנקסמית מפחיתה PPH ב-placenta praevia — אפקט אמיתי אך צנוע (NNT 19).", "critic_score": 4, "score_rationale": "תכנון חזק (phase 3, רב-מרכזי, כפול-סמיות, נשירה אפסית), אך האפקט צנוע ומונע ברובו מהרכיב הרך של התוצא המורכב.", "evidence_level": "Oxford CEBM 1b (RCT יחיד) · GRADE: Moderate (תוצא מורכב עם רכיב מחושב מוריד ביטחון)", "source_scope_warning": "", "study_snapshot": {"design": "RCT רב-מרכזי, כפול-סמיות, מבוקר-פלצבו, שלב 3 (24 מרכזים בסין, 7/2023–3/2025)", "population": "1732 נשים עם placenta praevia לפני ניתוח קיסרי (1694 נותחו; PAS ב-17.9%)", "n": "1732 רנדומיזציה / 1691 עם נתוני תוצא ראשוני (99.8%)", "intervention": "TXA 1 גרם IV תוך 5 דק' מהידוק חבל הטבור + אוקסיטוצין מניעתי, מול פלצבו", "primary_outcome": "PPH = איבוד דם מחושב ≥1000 מ\"ל או עירוי כדוריות תוך יומיים (תוצא מורכב)", "key_result": "29.7% (251/845) מול 35.1% (297/846); RR 0.85 (95.2% CI 0.75–0.96; P=0.01); ARR ~5.4%, NNT 19 (CI 10–104)"}, "strengths": ["תכנון מתודולוגי חזק: רנדומיזציה, סמיות כפולה ופלצבו אמיתי — מפחית performance ו-detection bias.", "גודל מדגם גדול עם power מספק, ונשירה כמעט אפסית (נתוני תוצא ראשוני ל-99.8%) — ITT אמין.", "רב-מרכזי (24 מרכזים) — מחזק תוקף חיצוני בתוך האוכלוסייה הנחקרת.", "דיווח כן: המחברים עצמם מכנים את האפקט 'צנוע', בלי ניפוח. מימון ציבורי, ללא ניגוד עניינים מסחרי.", "אוכלוסייה בסיכון גבוה ורלוונטית קלינית (praevia), עם שיעור PAS מתועד."], "weaknesses": [{"issue": "התוצא הראשוני מורכב, ומונע מהרכיב הרך: עירוי כדוריות לבדו לא ירד מובהקית (RR 0.90, CI 0.77–1.05).", "severity": "בינונית", "impact": "התועלת על מדד 'קשה' (עירוי, היסטרקטומיה, שוק) לא הוכחה — האפקט נשען על איבוד דם מחושב."}, {"issue": "איבוד הדם נמדד כ'מחושב' (calculated EBL) ולא כמדידה ישירה.", "severity": "בינונית", "impact": "מדד פחות אובייקטיבי; הפחתה ממוצעת של ~162 מ\"ל ספק משמעותית קלינית בנפרד."}, {"issue": "אוכלוסייה ממדינה אחת (סין) ומערכי קיסרי מקומיים.", "severity": "נמוכה", "impact": "כללי ליישום, אך יש לאמת מול אוכלוסייה ופרקטיקת ניתוח שונות בארץ."}, {"issue": "תת-כוח לאירועים חמורים נדירים (SAE 0.5% מול 0.5%, CI רחב 0.25–4.00).", "severity": "נמוכה", "impact": "'אין סיגנל לנזק' מרגיע אך אינו שולל סיכון תרומבואמבולי נדיר — המחקר לא תוכנן לכך."}], "spin_alert": {"detected": false, "quote": "statistically significant yet modest reduction... with no signal of increased serious adverse events", "reality": "המסקנה מאוזנת ותואמת את הנתונים — דוגמה לדיווח כן, בלי ניפוח של אפקט צנוע."}, "stats_red_flags": ["תוצא מורכב שבו הרכיב הקליני-קשה (עירוי) אינו מובהק בנפרד — קרא את הקומפוננטות ולא רק את הקומפוזיט.", "רווח הסמך 95.2% (ולא 95%) משקף תיקון לניתוח-ביניים — לגיטימי, אך שים לב.", "NNT לעירוי כולל ∞ (חוצה אפס) — כלומר אין תועלת מוכחת על מדד זה."], "clinical_bottom_line": "ב-placenta praevia לפני קיסרי, הוספת TXA לאוקסיטוצין מניעתי מפחיתה PPH בכ-5% מוחלט (NNT~19) ללא סיגנל בטיחותי, אך התועלת על עירוי/היסטרקטומיה לא הוכחה. סביר לשקול כתוספת זולה ובטוחה באוכלוסייה זו, מבלי לצפות לדרמה קלינית.", "what_would_change_my_mind": "ירידה מובהקת בתוצאים קשים (עירוי, היסטרקטומיה, שוק) או רפליקציה באוכלוסייה מערבית הייתה משדרגת מ'תוספת סבירה' ל'סטנדרט'. לעומת זאת, סיגנל תרומבואמבולי במחקר גדול יותר היה שולל.", "devils_advocate": "אפשר לטעון שאני מחמיר מדי: זו התערבות זולה, זמינה, בטוחה ביותר, עם הפחתה מובהקת ב-PPH באוכלוסייה בסיכון אמיתי. גם אם הקומפוזיט נשען על איבוד דם — פחות דימום הוא בעל ערך כשלעצמו, וה-NNT של 19 מצוין למניעה זולה. בהקשר הזה, 'צנוע אך אמין' עשוי בהחלט להצדיק שינוי פרקטיקה.", "one_liner_for_rounds": "ב-praevia: TXA מניעתי מוריד PPH (RR 0.85, NNT 19) — אמיתי אך צנוע, והרכיב של עירוי לא ירד מובהקית."}, "scope": "FULL_TEXT"}, "42242341": {"payload": {"verdict_line": "מטא-אנליזה של 12 RCT: מיו-אינוזיטול מפחית אבחנת GDM ב-44% — אך תוצאים קליniים קשים לא השתפרו.", "critic_score": 3, "score_rationale": "רמת ראיות גבוהה (מטא של RCTs) אך התועלת על תוצאים קשים נעדרת, וההפחתה מדווחת יחסית בלבד.", "evidence_level": "Oxford CEBM 1a (מטא-אנליזה של RCTs) · GRADE: Moderate (חשש להטיה והטרוגניות)", "source_scope_warning": "הניתוח מבוסס תקציר בלבד — I², רווחי סמך, ומידע על הטיית פרסום אינם זמינים.", "study_snapshot": {"design": "סקירה שיטתית ומטא-אנליזה (random-effects) של 12 RCT", "population": "4,765 נשים ללא סוכרת קודמת, בהריון או טרום-הריון", "n": "4,765 (12 מחקרים)", "intervention": "תוסף מיו-אינוזיטול מול פלצבו/טיפול רגיל", "primary_outcome": "אבחנת סוכרת הריון (GDM)", "key_result": "הפחתה יחסית של 44% ב-GDM (RR לא דווח במדויק בתקציר); תוצאים משניים — ללא הבדל מובהק"}, "strengths": ["תכנון ברמת הראיות הגבוהה ביותר — מטא-אנליזה של RCTs בלבד.", "מדגם מצרפי גדול (4,765 נשים, 12 מחקרים) ומנוע random-effects ההולם הטרוגניות.", "חיפוש מקיף (5 מאגרים) + ניתוחי רגישות leave-one-out + הערכת הטיה לפי Cochrane.", "תוצאה עקבית בכיוון תועלת על התוצא הראשוני."], "weaknesses": [{"issue": "התועלת על תוצאים קליניים קשים נעדרת: מקרוזומיה, HDP, קיסרי, היפוגליקמיה ילודית — ללא הבדל מובהק.", "severity": "גבוהה", "impact": "GDM הוא תוצא-ביניים; ללא שיפור בתוצאים האמיתיים, המשמעות הקלינית של ההפחתה מוגבלת."}, {"issue": "'44% הפחתה' הוא ערך יחסי; הפחתה מוחלטת ו-NNT לא דווחו בתקציר.", "severity": "בינונית", "impact": "לא ניתן לאמוד את גודל האפקט הקליני האמיתי ללא הנתון המוחלט."}, {"issue": "הטרוגניות צפויה בקריטריוני אבחון GDM, מינון ועיתוי המיו-אינוזיטול בין המחקרים.", "severity": "בינונית", "impact": "מערערת על מזיגות התוצאות; ערך I² אינו זמין בתקציר."}, {"issue": "'some concerns regarding bias' — איכות בינונית, וחלק ניכר ממחקרי המיו-אינוזיטול מאוכלוסיות ספציפיות.", "severity": "בינונית", "impact": "מגביל הכללה לאוכלוסייה הכללית בארץ."}], "spin_alert": {"detected": true, "quote": "promising, safe, and accessible preventive strategy... reinforce its potential role in improving maternal metabolic health", "reality": "המסקנה מרחיבה ל'בריאות מטבולית' בעוד שתוצאים מטבוליים/קליניים קשים (HDP, מקרוזומיה) דווקא לא השתפרו."}, "stats_red_flags": ["תוצא ראשוני הוא surrogate (אבחנת GDM) ולא תוצא קליני קשה.", "אפקט מדווח כ-relative risk reduction ללא ARR/NNT — נוטה להגדיל רושם.", "ללא דיווח בתקציר על I² והערכת הטיית פרסום (funnel/Egger)."], "clinical_bottom_line": "מיו-אינוזיטול נראה מפחית אבחנת GDM ובטוח, ויכול להישקל כאופציה זולה ובסיכון נמוך, במיוחד בנשים בסיכון גבוה. אך היעדר שיפור בתוצאים קליניים קשים ממתן את ההתלהבות — לא 'משנה משחק' עד שיודגם שיפור בתוצאי אם/ילוד.", "what_would_change_my_mind": "דיווח ARR/NNT משמעותי + הפחתה מובהקת במקרוזומיה/HDP, או מטא-אנליזה של נתוני מטופל פרטני (IPD) עם הטרוגניות נמוכה — היו משדרגים ל'משני-פרקטיקה'.", "devils_advocate": "מנגד: מניעת GDM כשלעצמה מורידה עומס מעקב, אינסולין וחרדת מטופלת; התערבות זולה, בטוחה וזמינה עם בסיס RCT איתן. גם אם התוצאים הקשים לא זזו במחקרים (שאולי תת-כוח לאיתורם), פרופיל סיכון-תועלת חיובי עשוי להצדיק שימוש בנשים בסיכון.", "one_liner_for_rounds": "מיו-אינוזיטול: מטא של 12 RCT מראה ↓44% ב-GDM, אבל בלי שיפור במקרוזומיה/HDP — בטוח וזול, לא פורץ-דרך."}, "scope": "ABSTRACT_ONLY"}};
 const EUT='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
 const TAIL='&tool=LitRadar&email=giladshahak@gmail.com';
@@ -169,19 +174,31 @@ function dateClause(){
   const w=+document.getElementById('window').value||30;
   return `&datetype=pdat&reldate=${w}`;
 }
-function onDatePreset(){const w=document.getElementById('window').value; if(w!=='0'){document.getElementById('from').value='';document.getElementById('to').value='';} runSearch();}
-function customDate(){runSearch();}
+function exitIssue(){state.issueMode=false; const im=document.getElementById('issueMonth'); if(im)im.value='';}
+function onDatePreset(){exitIssue(); const w=document.getElementById('window').value; if(w!=='0'){document.getElementById('from').value='';document.getElementById('to').value='';} runSearch();}
+function customDate(){exitIssue(); runSearch();}
 
 // ---- PubMed search ----
-function journalTerm(j){
+function journalTerm(j,fullIssue){
   let t=`(${j.issn_e}[IS] OR ${j.issn}[IS])`;
   if(j.filter_obgyn) t+=` AND ${CFG.obgyn_filter}`;
-  t+=` AND ${CFG.high_value_filter}`;
+  if(!fullIssue) t+=` AND ${CFG.high_value_filter}`;   // גיליון מלא = בלי פילטר ערך-גבוה
   return t;
 }
-async function esearch(term){
-  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&retmax=60&sort=pub_date&term='+encodeURIComponent(term)+dateClause()+TAIL;
+async function esearch(term,retmax){
+  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&retmax='+(retmax||60)+'&sort=pub_date&term='+encodeURIComponent(term)+dateClause()+TAIL;
   const j=await eutilsJSON(url); return (j.esearchresult&&j.esearchresult.idlist)||[];
+}
+function onIssueMonth(){
+  const m=document.getElementById('issueMonth').value;
+  if(!m){state.issueMode=false; runSearch(); return;}
+  const j=state.activeJournal?CFG.journals.find(x=>x.nick===state.activeJournal):null;
+  if(!j||j.filter_obgyn){setStatus('לתצוגת גיליון מלא: בחר תחילה עיתון גינקולוגי <b>יחיד</b> (לא NEJM/Lancet/JAMA).');return;}
+  const [y,mo]=m.split('-'); const last=new Date(+y,+mo,0).getDate();
+  document.getElementById('from').value=`${y}-${mo}-01`;
+  document.getElementById('to').value=`${y}-${mo}-${String(last).padStart(2,'0')}`;
+  document.getElementById('window').value='0';
+  state.issueMode=true; runSearch();
 }
 async function efetch(pmids){
   if(!pmids.length) return [];
@@ -206,7 +223,8 @@ function parsePubmed(xmlText){
     // date
     let d='';const ad=art.querySelector('ArticleDate')||art.querySelector('Journal JournalIssue PubDate');
     if(ad){const y=(ad.querySelector('Year')||{}).textContent;let m=(ad.querySelector('Month')||{}).textContent||'01';const dd=(ad.querySelector('Day')||{}).textContent||'01';const mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};if(isNaN(+m))m=mm[(m||'').slice(0,3).toLowerCase()]||'01';if(y)d=`${y}-${pad(+m)}-${pad(+dd)}`;}
-    out.push({pmid,title,abstract:abs,issn,journal_full:jtitle,authors,pub_types:ptypes,mesh,doi,date:d});
+    const hasEditorial=[...pa.querySelectorAll('CommentsCorrections')].some(c=>c.getAttribute('RefType')==='CommentIn');
+    out.push({pmid,title,abstract:abs,issn,journal_full:jtitle,authors,pub_types:ptypes,mesh,doi,date:d,hasEditorial});
   });
   return out;
 }
@@ -245,11 +263,12 @@ function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCas
 function setStatus(html){document.getElementById('status').innerHTML=html;}
 async function runSearch(){
   const journals=state.activeJournal?CFG.journals.filter(j=>j.nick===state.activeJournal):CFG.journals;
-  setStatus('סורק את PubMed בזמן אמת… <span class="spinner"></span>');
+  const fi=!!state.issueMode;
+  setStatus((fi?'טוען את הגיליון המלא':'סורק את PubMed בזמן אמת')+'… <span class="spinner"></span>');
   document.getElementById('feed').innerHTML='';
   try{
     // esearch per journal (parallel via gate)
-    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j)).catch(()=>[])));
+    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j,fi), fi?300:60).catch(()=>[])));
     const allIds=[...new Set([].concat(...idLists))];
     if(!allIds.length){setStatus('לא נמצאו מאמרים בטווח הזה. נסה להרחיב את התקופה.');state.articles=[];renderChips();document.getElementById('countbar').innerHTML='';return;}
     // efetch in chunks of 150
@@ -278,14 +297,19 @@ function applyView(){
     if(q&&!(a.title+' '+a.abstract).toLowerCase().includes(q))return false;
     return true;
   });
-  // cap per journal by importance
-  list.sort((x,y)=>y.importance-x.importance);
-  const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
-  if(CFG.max_total&&list.length>CFG.max_total)list=list.slice(0,CFG.max_total);
-  // sort: tier1 first, then chosen sort
-  const key=sortBy==='date'?(a=>a.date||''):(a=>a.importance);
-  list.sort((x,y)=>(tierOf(x)-tierOf(y))|| (sortBy==='date'?(''+key(y)).localeCompare(''+key(x)):key(y)-key(x)));
-  document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
+  if(!state.issueMode){
+    // cap per journal by importance, tier-1 first
+    list.sort((x,y)=>y.importance-x.importance);
+    const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
+    if(CFG.max_total&&list.length>CFG.max_total)list=list.slice(0,CFG.max_total);
+    const key=sortBy==='date'?(a=>a.date||''):(a=>a.importance);
+    list.sort((x,y)=>(tierOf(x)-tierOf(y))||(sortBy==='date'?(''+key(y)).localeCompare(''+key(x)):key(y)-key(x)));
+    document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
+  } else {
+    // גיליון מלא: כל המאמרים בחודש, לפי תאריך, ללא תקרות
+    list.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+    document.getElementById('countbar').innerHTML=`📖 גיליון מלא · <b>${list.length}</b> מאמרים (כל המאמרים בחודש)`;
+  }
   renderChips();
   const feed=document.getElementById('feed');
   feed.innerHTML=list.map((a,i)=>cardHTML(a,i)).join('');
@@ -294,8 +318,8 @@ function applyView(){
 function renderChips(){
   const counts={};state.articles.forEach(a=>{const j=journalOf(a);if(j)counts[j.nick]=(counts[j.nick]||0)+1;});
   const el=document.getElementById('chips');el.innerHTML='';
-  const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{state.activeJournal=null;runSearch();};el.appendChild(all);
-  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
+  const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{exitIssue();state.activeJournal=null;runSearch();};el.appendChild(all);
+  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{exitIssue();state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
 }
 function renderLegend(){document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+CFG.journals.map(j=>`<span>${j.tier===1?'👑':'<i class="dot" style="background:#7E94B0"></i>'}${esc(j.nick)}</span>`).join(' · ');}
 
@@ -304,15 +328,21 @@ function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
   if(pt.includes('Randomized')||t.includes('randomi'))return'RCT';
   if(pt.includes('Meta-Analysis')||t.includes('meta-analysis'))return'מטא-אנליזה';
   if(pt.includes('Systematic Review')||t.includes('systematic review'))return'סקירה שיטתית';
-  if(pt.includes('Guideline')||t.includes('guideline')||t.includes('committee opinion'))return'הנחיה';
   if(pt.includes('Phase III')||t.includes('phase 3'))return'Phase III';return null;}
+function specialBadges(a){
+  const pt=a.pub_types.join(' ').toLowerCase(),t=a.title.toLowerCase();let s='';
+  if(pt.includes('guideline')||pt.includes('consensus')||t.includes('committee opinion')||t.includes('position statement')||t.includes('practice bulletin')||t.includes('consensus statement'))
+    s+='<span class="tag t-pos">📋 נייר עמדה / הנחיה</span>';
+  else if(pt.includes('editorial')) s+='<span class="tag t-pos">✍️ מאמר מערכת</span>';
+  if(a.hasEditorial) s+='<span class="tag t-pos" title="פורסם עליו מאמר מערכת/פרשנות — סימן להתייחסות מיוחדת">⭐ זכה למאמר מערכת</span>';
+  return s;}
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
   const fresh=(b.mat!=null&&b.mat<10);
   const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''}\nהשפעה בפועל ${b.impact!=null?b.impact:'?'}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':''} — משקל ${b.impW!=null?b.impW:0}%${fresh?'\n(מאמר טרי: מדורג בעיקר לפי רמת ראיות)':''}`;
-  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
-  const an=ANALYSES[a.pmid];
+  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+specialBadges(a)+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
+  const an=ANALYSES[a.pmid]||loadLocalAn(a.pmid);
   return `<div class="card${j.tier===1?' tier1':''}">
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
@@ -326,11 +356,47 @@ function cardHTML(a,i){
           ${a.doi?`<a class="btn" href="https://doi.org/${esc(a.doi)}" target="_blank">🔗 מקור</a>`:''}
         </div>
         <div class="panel" id="ab-${a.pmid}"><div class="abx" dir="auto">${esc(a.abstract)||'— אין תקציר —'}</div></div>
-        <div class="panel" id="an-${a.pmid}">${an?analysisHTML(an.payload,an.scope):'<div class="an-info">אין עדיין ניתוח שמור. הניתוח האוטומטי ("המבקר הקליני") ירוץ באפליקציה עם מפתח ה-API.</div>'}</div>
+        <div class="panel" id="an-${a.pmid}"${an?' data-ready="1"':''}>${an?analysisHTML(an.payload,an.scope):''}</div>
       </div>
     </div></div>`;
 }
-function toggleAn(pmid,btn){const p=document.getElementById('an-'+pmid);const o=p.classList.toggle('open');btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';}
+const LIVE_AN={};
+function setKey(){
+  const cur=localStorage.getItem('lr_key')||'';
+  const k=prompt('הדבק מפתח Claude API (sk-ant-…).\nנשמר אך ורק בדפדפן שלך ונשלח רק ל-Anthropic.\nהשג ב-console.anthropic.com', cur);
+  if(k!=null){localStorage.setItem('lr_key',k.trim());alert(k.trim()?'✓ המפתח נשמר. לחץ "⚡ ניתוח ביקורתי" על מאמר.':'המפתח נמחק.');}
+}
+function loadLocalAn(pmid){if(LIVE_AN[pmid])return LIVE_AN[pmid];try{const s=localStorage.getItem('lr_an_'+pmid);if(s){LIVE_AN[pmid]=JSON.parse(s);return LIVE_AN[pmid];}}catch(e){}return null;}
+function criticUserMsg(a,content,scope){
+  const meta=`כותרת: ${a.title}\nעיתון: ${a.journal_full||''} | שנה: ${(a.date||'').slice(0,4)}\nסוגי פרסום: ${a.pub_types.join(', ')||'לא דווח'}\nMeSH: ${a.mesh.slice(0,15).join(', ')||'לא דווח'}\nDOI: ${a.doi||'לא דווח'}\nSOURCE_SCOPE: ${scope}\n`;
+  return meta+`\n===== טקסט המאמר (${scope==='FULL_TEXT'?'טקסט מלא':'תקציר בלבד'}) =====\n${content}\n===== סוף הטקסט =====\n\nבצע את הניתוח המלא והחזר JSON תקין יחיד בלבד.`;
+}
+async function callClaude(user){
+  const key=localStorage.getItem('lr_key');
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:CFG.analysis_model,max_tokens:4000,system:CFG.critic_prompt,messages:[{role:'user',content:user},{role:'assistant',content:'{'}]})});
+  if(!r.ok){let t='';try{t=(await r.json()).error.message;}catch(e){t=await r.text();}throw new Error(r.status+' '+String(t).slice(0,140));}
+  const j=await r.json();let txt='{'+((j.content&&j.content[0]&&j.content[0].text)||'');
+  return JSON.parse(txt.slice(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+}
+async function analyzeLive(pmid){
+  const a=state.articles.find(x=>x.pmid===pmid),p=document.getElementById('an-'+pmid);if(!a||!p)return;
+  if(!localStorage.getItem('lr_key')){p.innerHTML='<div class="an-info">להפעלת הניתוח הביקורתי החי דרוש מפתח Claude API.<br><button class="btn btn-primary" style="margin-top:8px" onclick="setKey()">🔑 הזן מפתח</button><br><small style="color:var(--muted)">נשמר רק בדפדפן שלך ונשלח אך ורק ל-Anthropic. השג ב-console.anthropic.com</small></div>';p.dataset.ready='1';return;}
+  p.innerHTML='⏳ המבקר הקליני עובד… <span class="spinner"></span>';
+  try{
+    const content=a.abstract||'';if(!content){p.innerHTML='<div class="an-info">אין תקציר לניתוח.</div>';p.dataset.ready='1';return;}
+    const payload=await callClaude(criticUserMsg(a,content,'ABSTRACT_ONLY'));
+    LIVE_AN[pmid]={payload,scope:'ABSTRACT_ONLY'};try{localStorage.setItem('lr_an_'+pmid,JSON.stringify(LIVE_AN[pmid]));}catch(e){}
+    p.innerHTML=analysisHTML(payload,'ABSTRACT_ONLY');p.dataset.ready='1';
+  }catch(e){p.innerHTML='<div class="an-weak">שגיאת ניתוח: '+esc(String(e.message||e))+'</div><button class="btn" style="margin-top:6px" onclick="setKey()">🔑 עדכן מפתח</button>';}
+}
+function toggleAn(pmid,btn){
+  const p=document.getElementById('an-'+pmid);const o=p.classList.toggle('open');
+  btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';
+  if(o&&!p.dataset.ready){const c=ANALYSES[pmid]||loadLocalAn(pmid);
+    if(c){p.innerHTML=analysisHTML(c.payload,c.scope);p.dataset.ready='1';}else analyzeLive(pmid);}
+}
 function analysisHTML(an,scope){
   let h='';if(scope==='ABSTRACT_ONLY')h+='<div class="scope-warn">⚠️ ניתוח מבוסס תקציר בלבד.</div>';
   h+=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="badge5">${esc(String(an.critic_score))}/5</span><div class="an-verdict" style="flex:1;margin:0">⚖️ ${esc(an.verdict_line)}</div></div>`;
@@ -379,9 +445,11 @@ async function openTrends(){
   body.innerHTML='מנתח את הספרות בשנתיים האחרונות… <span class="spinner"></span>';
   const now=daysAgo(0), y1=daysAgo(365), y2=daysAgo(730);
   const res=[];
-  let done=0; const N=CFG.trend_topics.length;
+  const cat=document.getElementById('trendCat').value;
+  const topics=CFG.trend_topics.filter(t=>!cat||t[2]===cat);
+  let done=0; const N=topics.length;
   // countQuery כבר עובר דרך ncbiGate — אסור לעטוף שוב (deadlock). מריצים ישירות.
-  await Promise.all(CFG.trend_topics.map(async([label,q])=>{
+  await Promise.all(topics.map(async([label,q,c])=>{
     try{
       const recent=await countQuery(q,y1,now);
       const prior=await countQuery(q,y2,y1);
@@ -405,6 +473,7 @@ function init(){
   document.getElementById('window').value=String(CFG.default_window>=30?CFG.default_window:30);
   document.getElementById('perj').value=String(CFG.default_per_journal);
   const ts=document.getElementById('topic');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;ts.appendChild(o);});
+  const tc=document.getElementById('trendCat');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;tc.appendChild(o);});
   renderLegend();renderChips();runSearch();
 }
 init();

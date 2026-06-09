@@ -14,7 +14,8 @@ from app.config import (JOURNALS, OBGYN_FILTER, HIGH_VALUE_FILTER, TOPIC_MAP,
                         AUTHOR_HINDEX_TOP, IMPACT_FWCI_TOP,
                         CITATION_MIN_MONTHS, CITATION_MATURE_MONTHS,
                         DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS,
-                        DIGEST_MAX_TOTAL, TREND_TOPICS)
+                        DIGEST_MAX_TOTAL, TREND_TOPICS, ANALYSIS_MODEL)
+from app.prompts import CRITIC_SYSTEM_PROMPT
 
 OUT_DIR = Path(__file__).resolve().parent / "site"
 OUT_DIR.mkdir(exist_ok=True)
@@ -57,7 +58,9 @@ def build(today: str | None = None) -> Path:
         "default_window": DIGEST_WINDOW_DAYS,
         "default_per_journal": DIGEST_PER_JOURNAL,
         "max_total": DIGEST_MAX_TOTAL,
-        "trend_topics": [[label, q] for label, q in TREND_TOPICS],
+        "trend_topics": [[label, q, cat] for label, q, cat in TREND_TOPICS],
+        "critic_prompt": CRITIC_SYSTEM_PROMPT,
+        "analysis_model": ANALYSIS_MODEL,
         "generated": today,
         "today_iso": date.today().isoformat(),
     }
@@ -137,6 +140,7 @@ a{color:inherit;text-decoration:none}
 .tag{border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
 .t-star{background:var(--star-bg);color:var(--star-fg)}
 .t-topic{background:var(--chip-bg);color:var(--chip-fg)}
+.t-pos{background:#F6E6C8;color:#8A6B33;font-weight:700;border:1px solid #E4CFA0}
 .actions{margin-top:14px;display:flex;gap:9px;flex-wrap:wrap}
 .panel{margin-top:14px;border-top:1px dashed var(--line);padding-top:14px;display:none}
 .panel.open{display:block}
@@ -190,6 +194,7 @@ a{color:inherit;text-decoration:none}
     </select></div>
   <div class="ctl"><label>מ-תאריך</label><input type="date" class="dateinp" id="from" onchange="customDate()"></div>
   <div class="ctl"><label>עד</label><input type="date" class="dateinp" id="to" onchange="customDate()"></div>
+  <div class="ctl"><label>גיליון מלא</label><input type="month" class="dateinp" id="issueMonth" title="הצג את כל מאמרי הגיליון (בחר עיתון יחיד תחילה)" onchange="onIssueMonth()"></div>
   <div class="ctl"><label>מקס׳/עיתון</label>
     <select class="sortsel" id="perj" onchange="applyView()">
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
@@ -199,6 +204,7 @@ a{color:inherit;text-decoration:none}
   <div class="ctl"><label>מיון</label><select class="sortsel" id="sort" onchange="applyView()"><option value="imp">חשיבות</option><option value="date">תאריך</option></select></div>
   <button class="btn btn-primary" onclick="runSearch()">🔄 חפש</button>
   <button class="btn btn-trend" onclick="openTrends()">📈 מגמות בתחום</button>
+  <button class="btn" onclick="setKey()" title="מפתח Claude API לניתוח ביקורתי חי (נשמר רק בדפדפן)">🔑 ניתוח</button>
 </div>
 <div class="chips" id="chips"></div>
 <div class="countbar" id="countbar"></div>
@@ -212,6 +218,8 @@ a{color:inherit;text-decoration:none}
     <button class="closeX" onclick="closeTrends()">✕</button>
     <h2>📈 מגמות בתחום</h2>
     <div class="sub" style="color:var(--muted);font-size:13px;margin-bottom:10px">גידול בנפח הפרסום ב-PubMed: 12 חודשים אחרונים מול 12 הקודמים</div>
+    <div style="margin-bottom:12px"><label style="font-size:13px;color:var(--muted)">נושא: </label>
+      <select class="sortsel" id="trendCat" onchange="openTrends()"><option value="">כל הנושאים</option></select></div>
     <div id="trendsBody"></div>
   </div>
 </div>
@@ -242,19 +250,31 @@ function dateClause(){
   const w=+document.getElementById('window').value||30;
   return `&datetype=pdat&reldate=${w}`;
 }
-function onDatePreset(){const w=document.getElementById('window').value; if(w!=='0'){document.getElementById('from').value='';document.getElementById('to').value='';} runSearch();}
-function customDate(){runSearch();}
+function exitIssue(){state.issueMode=false; const im=document.getElementById('issueMonth'); if(im)im.value='';}
+function onDatePreset(){exitIssue(); const w=document.getElementById('window').value; if(w!=='0'){document.getElementById('from').value='';document.getElementById('to').value='';} runSearch();}
+function customDate(){exitIssue(); runSearch();}
 
 // ---- PubMed search ----
-function journalTerm(j){
+function journalTerm(j,fullIssue){
   let t=`(${j.issn_e}[IS] OR ${j.issn}[IS])`;
   if(j.filter_obgyn) t+=` AND ${CFG.obgyn_filter}`;
-  t+=` AND ${CFG.high_value_filter}`;
+  if(!fullIssue) t+=` AND ${CFG.high_value_filter}`;   // גיליון מלא = בלי פילטר ערך-גבוה
   return t;
 }
-async function esearch(term){
-  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&retmax=60&sort=pub_date&term='+encodeURIComponent(term)+dateClause()+TAIL;
+async function esearch(term,retmax){
+  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&retmax='+(retmax||60)+'&sort=pub_date&term='+encodeURIComponent(term)+dateClause()+TAIL;
   const j=await eutilsJSON(url); return (j.esearchresult&&j.esearchresult.idlist)||[];
+}
+function onIssueMonth(){
+  const m=document.getElementById('issueMonth').value;
+  if(!m){state.issueMode=false; runSearch(); return;}
+  const j=state.activeJournal?CFG.journals.find(x=>x.nick===state.activeJournal):null;
+  if(!j||j.filter_obgyn){setStatus('לתצוגת גיליון מלא: בחר תחילה עיתון גינקולוגי <b>יחיד</b> (לא NEJM/Lancet/JAMA).');return;}
+  const [y,mo]=m.split('-'); const last=new Date(+y,+mo,0).getDate();
+  document.getElementById('from').value=`${y}-${mo}-01`;
+  document.getElementById('to').value=`${y}-${mo}-${String(last).padStart(2,'0')}`;
+  document.getElementById('window').value='0';
+  state.issueMode=true; runSearch();
 }
 async function efetch(pmids){
   if(!pmids.length) return [];
@@ -279,7 +299,8 @@ function parsePubmed(xmlText){
     // date
     let d='';const ad=art.querySelector('ArticleDate')||art.querySelector('Journal JournalIssue PubDate');
     if(ad){const y=(ad.querySelector('Year')||{}).textContent;let m=(ad.querySelector('Month')||{}).textContent||'01';const dd=(ad.querySelector('Day')||{}).textContent||'01';const mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};if(isNaN(+m))m=mm[(m||'').slice(0,3).toLowerCase()]||'01';if(y)d=`${y}-${pad(+m)}-${pad(+dd)}`;}
-    out.push({pmid,title,abstract:abs,issn,journal_full:jtitle,authors,pub_types:ptypes,mesh,doi,date:d});
+    const hasEditorial=[...pa.querySelectorAll('CommentsCorrections')].some(c=>c.getAttribute('RefType')==='CommentIn');
+    out.push({pmid,title,abstract:abs,issn,journal_full:jtitle,authors,pub_types:ptypes,mesh,doi,date:d,hasEditorial});
   });
   return out;
 }
@@ -318,11 +339,12 @@ function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCas
 function setStatus(html){document.getElementById('status').innerHTML=html;}
 async function runSearch(){
   const journals=state.activeJournal?CFG.journals.filter(j=>j.nick===state.activeJournal):CFG.journals;
-  setStatus('סורק את PubMed בזמן אמת… <span class="spinner"></span>');
+  const fi=!!state.issueMode;
+  setStatus((fi?'טוען את הגיליון המלא':'סורק את PubMed בזמן אמת')+'… <span class="spinner"></span>');
   document.getElementById('feed').innerHTML='';
   try{
     // esearch per journal (parallel via gate)
-    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j)).catch(()=>[])));
+    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j,fi), fi?300:60).catch(()=>[])));
     const allIds=[...new Set([].concat(...idLists))];
     if(!allIds.length){setStatus('לא נמצאו מאמרים בטווח הזה. נסה להרחיב את התקופה.');state.articles=[];renderChips();document.getElementById('countbar').innerHTML='';return;}
     // efetch in chunks of 150
@@ -351,14 +373,19 @@ function applyView(){
     if(q&&!(a.title+' '+a.abstract).toLowerCase().includes(q))return false;
     return true;
   });
-  // cap per journal by importance
-  list.sort((x,y)=>y.importance-x.importance);
-  const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
-  if(CFG.max_total&&list.length>CFG.max_total)list=list.slice(0,CFG.max_total);
-  // sort: tier1 first, then chosen sort
-  const key=sortBy==='date'?(a=>a.date||''):(a=>a.importance);
-  list.sort((x,y)=>(tierOf(x)-tierOf(y))|| (sortBy==='date'?(''+key(y)).localeCompare(''+key(x)):key(y)-key(x)));
-  document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
+  if(!state.issueMode){
+    // cap per journal by importance, tier-1 first
+    list.sort((x,y)=>y.importance-x.importance);
+    const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
+    if(CFG.max_total&&list.length>CFG.max_total)list=list.slice(0,CFG.max_total);
+    const key=sortBy==='date'?(a=>a.date||''):(a=>a.importance);
+    list.sort((x,y)=>(tierOf(x)-tierOf(y))||(sortBy==='date'?(''+key(y)).localeCompare(''+key(x)):key(y)-key(x)));
+    document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
+  } else {
+    // גיליון מלא: כל המאמרים בחודש, לפי תאריך, ללא תקרות
+    list.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+    document.getElementById('countbar').innerHTML=`📖 גיליון מלא · <b>${list.length}</b> מאמרים (כל המאמרים בחודש)`;
+  }
   renderChips();
   const feed=document.getElementById('feed');
   feed.innerHTML=list.map((a,i)=>cardHTML(a,i)).join('');
@@ -367,8 +394,8 @@ function applyView(){
 function renderChips(){
   const counts={};state.articles.forEach(a=>{const j=journalOf(a);if(j)counts[j.nick]=(counts[j.nick]||0)+1;});
   const el=document.getElementById('chips');el.innerHTML='';
-  const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{state.activeJournal=null;runSearch();};el.appendChild(all);
-  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
+  const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{exitIssue();state.activeJournal=null;runSearch();};el.appendChild(all);
+  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{exitIssue();state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
 }
 function renderLegend(){document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+CFG.journals.map(j=>`<span>${j.tier===1?'👑':'<i class="dot" style="background:#7E94B0"></i>'}${esc(j.nick)}</span>`).join(' · ');}
 
@@ -377,15 +404,21 @@ function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
   if(pt.includes('Randomized')||t.includes('randomi'))return'RCT';
   if(pt.includes('Meta-Analysis')||t.includes('meta-analysis'))return'מטא-אנליזה';
   if(pt.includes('Systematic Review')||t.includes('systematic review'))return'סקירה שיטתית';
-  if(pt.includes('Guideline')||t.includes('guideline')||t.includes('committee opinion'))return'הנחיה';
   if(pt.includes('Phase III')||t.includes('phase 3'))return'Phase III';return null;}
+function specialBadges(a){
+  const pt=a.pub_types.join(' ').toLowerCase(),t=a.title.toLowerCase();let s='';
+  if(pt.includes('guideline')||pt.includes('consensus')||t.includes('committee opinion')||t.includes('position statement')||t.includes('practice bulletin')||t.includes('consensus statement'))
+    s+='<span class="tag t-pos">📋 נייר עמדה / הנחיה</span>';
+  else if(pt.includes('editorial')) s+='<span class="tag t-pos">✍️ מאמר מערכת</span>';
+  if(a.hasEditorial) s+='<span class="tag t-pos" title="פורסם עליו מאמר מערכת/פרשנות — סימן להתייחסות מיוחדת">⭐ זכה למאמר מערכת</span>';
+  return s;}
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
   const fresh=(b.mat!=null&&b.mat<10);
   const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''}\nהשפעה בפועל ${b.impact!=null?b.impact:'?'}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':''} — משקל ${b.impW!=null?b.impW:0}%${fresh?'\n(מאמר טרי: מדורג בעיקר לפי רמת ראיות)':''}`;
-  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
-  const an=ANALYSES[a.pmid];
+  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+specialBadges(a)+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
+  const an=ANALYSES[a.pmid]||loadLocalAn(a.pmid);
   return `<div class="card${j.tier===1?' tier1':''}">
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
@@ -399,11 +432,47 @@ function cardHTML(a,i){
           ${a.doi?`<a class="btn" href="https://doi.org/${esc(a.doi)}" target="_blank">🔗 מקור</a>`:''}
         </div>
         <div class="panel" id="ab-${a.pmid}"><div class="abx" dir="auto">${esc(a.abstract)||'— אין תקציר —'}</div></div>
-        <div class="panel" id="an-${a.pmid}">${an?analysisHTML(an.payload,an.scope):'<div class="an-info">אין עדיין ניתוח שמור. הניתוח האוטומטי ("המבקר הקליני") ירוץ באפליקציה עם מפתח ה-API.</div>'}</div>
+        <div class="panel" id="an-${a.pmid}"${an?' data-ready="1"':''}>${an?analysisHTML(an.payload,an.scope):''}</div>
       </div>
     </div></div>`;
 }
-function toggleAn(pmid,btn){const p=document.getElementById('an-'+pmid);const o=p.classList.toggle('open');btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';}
+const LIVE_AN={};
+function setKey(){
+  const cur=localStorage.getItem('lr_key')||'';
+  const k=prompt('הדבק מפתח Claude API (sk-ant-…).\nנשמר אך ורק בדפדפן שלך ונשלח רק ל-Anthropic.\nהשג ב-console.anthropic.com', cur);
+  if(k!=null){localStorage.setItem('lr_key',k.trim());alert(k.trim()?'✓ המפתח נשמר. לחץ "⚡ ניתוח ביקורתי" על מאמר.':'המפתח נמחק.');}
+}
+function loadLocalAn(pmid){if(LIVE_AN[pmid])return LIVE_AN[pmid];try{const s=localStorage.getItem('lr_an_'+pmid);if(s){LIVE_AN[pmid]=JSON.parse(s);return LIVE_AN[pmid];}}catch(e){}return null;}
+function criticUserMsg(a,content,scope){
+  const meta=`כותרת: ${a.title}\nעיתון: ${a.journal_full||''} | שנה: ${(a.date||'').slice(0,4)}\nסוגי פרסום: ${a.pub_types.join(', ')||'לא דווח'}\nMeSH: ${a.mesh.slice(0,15).join(', ')||'לא דווח'}\nDOI: ${a.doi||'לא דווח'}\nSOURCE_SCOPE: ${scope}\n`;
+  return meta+`\n===== טקסט המאמר (${scope==='FULL_TEXT'?'טקסט מלא':'תקציר בלבד'}) =====\n${content}\n===== סוף הטקסט =====\n\nבצע את הניתוח המלא והחזר JSON תקין יחיד בלבד.`;
+}
+async function callClaude(user){
+  const key=localStorage.getItem('lr_key');
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:CFG.analysis_model,max_tokens:4000,system:CFG.critic_prompt,messages:[{role:'user',content:user},{role:'assistant',content:'{'}]})});
+  if(!r.ok){let t='';try{t=(await r.json()).error.message;}catch(e){t=await r.text();}throw new Error(r.status+' '+String(t).slice(0,140));}
+  const j=await r.json();let txt='{'+((j.content&&j.content[0]&&j.content[0].text)||'');
+  return JSON.parse(txt.slice(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+}
+async function analyzeLive(pmid){
+  const a=state.articles.find(x=>x.pmid===pmid),p=document.getElementById('an-'+pmid);if(!a||!p)return;
+  if(!localStorage.getItem('lr_key')){p.innerHTML='<div class="an-info">להפעלת הניתוח הביקורתי החי דרוש מפתח Claude API.<br><button class="btn btn-primary" style="margin-top:8px" onclick="setKey()">🔑 הזן מפתח</button><br><small style="color:var(--muted)">נשמר רק בדפדפן שלך ונשלח אך ורק ל-Anthropic. השג ב-console.anthropic.com</small></div>';p.dataset.ready='1';return;}
+  p.innerHTML='⏳ המבקר הקליני עובד… <span class="spinner"></span>';
+  try{
+    const content=a.abstract||'';if(!content){p.innerHTML='<div class="an-info">אין תקציר לניתוח.</div>';p.dataset.ready='1';return;}
+    const payload=await callClaude(criticUserMsg(a,content,'ABSTRACT_ONLY'));
+    LIVE_AN[pmid]={payload,scope:'ABSTRACT_ONLY'};try{localStorage.setItem('lr_an_'+pmid,JSON.stringify(LIVE_AN[pmid]));}catch(e){}
+    p.innerHTML=analysisHTML(payload,'ABSTRACT_ONLY');p.dataset.ready='1';
+  }catch(e){p.innerHTML='<div class="an-weak">שגיאת ניתוח: '+esc(String(e.message||e))+'</div><button class="btn" style="margin-top:6px" onclick="setKey()">🔑 עדכן מפתח</button>';}
+}
+function toggleAn(pmid,btn){
+  const p=document.getElementById('an-'+pmid);const o=p.classList.toggle('open');
+  btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';
+  if(o&&!p.dataset.ready){const c=ANALYSES[pmid]||loadLocalAn(pmid);
+    if(c){p.innerHTML=analysisHTML(c.payload,c.scope);p.dataset.ready='1';}else analyzeLive(pmid);}
+}
 function analysisHTML(an,scope){
   let h='';if(scope==='ABSTRACT_ONLY')h+='<div class="scope-warn">⚠️ ניתוח מבוסס תקציר בלבד.</div>';
   h+=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="badge5">${esc(String(an.critic_score))}/5</span><div class="an-verdict" style="flex:1;margin:0">⚖️ ${esc(an.verdict_line)}</div></div>`;
@@ -452,9 +521,11 @@ async function openTrends(){
   body.innerHTML='מנתח את הספרות בשנתיים האחרונות… <span class="spinner"></span>';
   const now=daysAgo(0), y1=daysAgo(365), y2=daysAgo(730);
   const res=[];
-  let done=0; const N=CFG.trend_topics.length;
+  const cat=document.getElementById('trendCat').value;
+  const topics=CFG.trend_topics.filter(t=>!cat||t[2]===cat);
+  let done=0; const N=topics.length;
   // countQuery כבר עובר דרך ncbiGate — אסור לעטוף שוב (deadlock). מריצים ישירות.
-  await Promise.all(CFG.trend_topics.map(async([label,q])=>{
+  await Promise.all(topics.map(async([label,q,c])=>{
     try{
       const recent=await countQuery(q,y1,now);
       const prior=await countQuery(q,y2,y1);
@@ -478,6 +549,7 @@ function init(){
   document.getElementById('window').value=String(CFG.default_window>=30?CFG.default_window:30);
   document.getElementById('perj').value=String(CFG.default_per_journal);
   const ts=document.getElementById('topic');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;ts.appendChild(o);});
+  const tc=document.getElementById('trendCat');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;tc.appendChild(o);});
   renderLegend();renderChips();runSearch();
 }
 init();

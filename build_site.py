@@ -1,70 +1,63 @@
 """
-מחולל אתר הדייג'סט הסטטי — קורא את הבחירה מה-DB ומייצר docs/index.html
-עצמאי (RTL, אינטראקטיבי, פלטת פסטל יוקרתי). הרצה:  python build_site.py
-האתר אופה "superset" גדול; הפקדים באתר מסננים זמן/כמות בזמן אמת.
+מחולל אתר LitRadar — גרסה חיה (client-side).
+הדף שואל את PubMed (eutils) ו-OpenAlex ישירות מהדפדפן בכל שינוי הגדרות —
+חיפוש אמיתי בכל פעם, טווח תאריכים חופשי, ו"מגמות בתחום". פייתון רק אופה את הקונפיג.
+הרצה:  python build_site.py
 """
 import json
 from pathlib import Path
 from datetime import date
 
 from app import db
-from app.digest import digest_with_analyses, _PRIMARY_LIST
-from app.scoring import importance_breakdown
-from app.config import (DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS, DIGEST_MAX_TOTAL,
-                        DIGEST_BAKE_WINDOW_DAYS, DIGEST_BAKE_PER_JOURNAL)
+from app.config import (JOURNALS, OBGYN_FILTER, HIGH_VALUE_FILTER, TOPIC_MAP,
+                        DEFAULT_TOPIC, DESIGN_RANK, DESIGN_RANK_DEFAULT, SCORE_WEIGHTS,
+                        AUTHOR_HINDEX_TOP, DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS,
+                        DIGEST_MAX_TOTAL, TREND_TOPICS)
 
 OUT_DIR = Path(__file__).resolve().parent / "site"
 OUT_DIR.mkdir(exist_ok=True)
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
 
 
-def _rescore_db():
-    """מרענן ציוני חשיבות לכל המאמרים לפי הנוסחה הנוכחית (3 גורמים)."""
-    for a in db.query_articles(limit=5000):
-        new = importance_breakdown(a)["total"]
-        if abs(new - (a.get("importance") or 0)) > 0.05:
-            a["importance"] = new
-            db.upsert_article(a)
+def _all_analyses() -> dict:
+    out = {}
+    try:
+        with db.get_conn() as conn:
+            for r in conn.execute("SELECT pmid, payload, source_scope FROM analyses").fetchall():
+                out[r["pmid"]] = {"payload": json.loads(r["payload"]), "scope": r["source_scope"]}
+    except Exception:
+        pass
+    return out
 
 
 def build(today: str | None = None) -> Path:
     if today is None:
         today = date.today().strftime("%d/%m/%Y")
     db.init_db()
-    _rescore_db()
-    # אופים superset; הפקדים באתר מסננים ממנו
-    items = digest_with_analyses(per_journal=DIGEST_BAKE_PER_JOURNAL,
-                                 window_days=DIGEST_BAKE_WINDOW_DAYS)
-    data = []
-    for a in items:
-        data.append({
-            "pmid": a["pmid"],
-            "title": a["title"],
-            "abstract": a.get("abstract") or "",
-            "journal": a.get("journal_nick") or a.get("journal") or "",
-            "date": a.get("pub_date") or "",
-            "authors": a.get("authors") or [],
-            "topics": a.get("topics") or [],
-            "pub_types": a.get("pub_types") or [],
-            "importance": round(a.get("importance", 0)),
-            "breakdown": importance_breakdown(a),
-            "author_top": a.get("author_top") or "",
-            "doi": a.get("doi") or "",
-            "analysis": a.get("analysis"),
-            "analysis_scope": a.get("analysis_scope"),
-        })
-
-    meta = {
-        "count": len(data),
-        "journals": [j.get("nick") or j["name"] for j in _PRIMARY_LIST],
-        "default_per_journal": DIGEST_PER_JOURNAL,
+    primary = [j for j in JOURNALS if j.get("primary")]
+    cfg = {
+        "journals": [{"nick": j.get("nick") or j["name"], "issn": j["issn"],
+                      "issn_e": j.get("issn_e", ""), "weight": j["weight"],
+                      "tier": j.get("tier", 2), "filter_obgyn": j.get("filter_obgyn", False)}
+                     for j in primary],
+        "max_weight": max((j["weight"] for j in JOURNALS), default=10),
+        "obgyn_filter": OBGYN_FILTER,
+        "high_value_filter": HIGH_VALUE_FILTER,
+        "topics": [[name, kws] for name, kws in TOPIC_MAP],
+        "default_topic": DEFAULT_TOPIC,
+        "design_rank": [[kws, rank] for kws, rank in DESIGN_RANK],
+        "design_default": DESIGN_RANK_DEFAULT,
+        "weights": SCORE_WEIGHTS,
+        "author_top": AUTHOR_HINDEX_TOP,
         "default_window": DIGEST_WINDOW_DAYS,
+        "default_per_journal": DIGEST_PER_JOURNAL,
         "max_total": DIGEST_MAX_TOTAL,
+        "trend_topics": [[label, q] for label, q in TREND_TOPICS],
         "generated": today,
         "today_iso": date.today().isoformat(),
     }
-    html = TEMPLATE.replace("/*__DATA__*/", json.dumps(data, ensure_ascii=False)) \
-                   .replace("/*__META__*/", json.dumps(meta, ensure_ascii=False))
+    html = (TEMPLATE.replace("/*__CFG__*/", json.dumps(cfg, ensure_ascii=False))
+                    .replace("/*__ANALYSES__*/", json.dumps(_all_analyses(), ensure_ascii=False)))
     out = OUT_DIR / "index.html"
     out.write_text(html, encoding="utf-8")
     DOCS_DIR.mkdir(exist_ok=True)
@@ -78,9 +71,8 @@ TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LitRadar · דייג'סט שבועי</title>
+<title>LitRadar · מכ"ם ספרות חי</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -89,308 +81,382 @@ TEMPLATE = r"""<!DOCTYPE html>
   --hi:#3F6149; --hi-bg:#E1ECE2; --mid:#8A6A3A; --mid-bg:#F3E8D5; --lo:#5E5950; --lo-bg:#E8E6E1;
   --chip-bg:#EEEAE2; --chip-fg:#5E584E; --star-bg:#F3E7CF; --star-fg:#8A6B33;
   --strong-bg:#E4EDE5; --strong-bd:#9DBFA4; --weak-bg:#F5E7E4; --weak-bd:#D6AfA6;
-  --verdict-bg:#ECE8F0; --verdict-bd:#D0C6DA;
+  --verdict-bg:#ECE8F0; --verdict-bd:#D0C6DA; --gold:#B98E3C;
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:'Heebo',sans-serif;background:var(--bg);color:var(--ink);}
 a{color:inherit;text-decoration:none}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px;}
-
-/* hero */
-.hero{background:linear-gradient(125deg,#EDE4E0 0%,#E7E2EC 55%,#E1E8E4 130%);color:var(--ink);padding:30px 0 66px;border-bottom:1px solid var(--line);}
-.hero h1{margin:0;font-family:'Frank Ruhl Libre',serif;font-size:32px;font-weight:900;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
-.hero .sub{margin-top:8px;color:#6a6258;font-size:15px;font-weight:400;max-width:680px}
-.hero .stats{margin-top:18px;display:flex;gap:26px;flex-wrap:wrap;font-size:12.5px;color:#6a6258}
-.hero .stats b{font-size:19px;display:block;font-weight:800;color:var(--ink);font-family:'Frank Ruhl Libre',serif}
-
-/* toolbar */
-.toolbar{max-width:1080px;margin:-42px auto 0;padding:13px 15px;background:var(--card);border:1px solid var(--line);
-  border-radius:16px;box-shadow:0 12px 34px rgba(90,70,60,.10);display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:10px;z-index:30}
-.search{flex:1;min-width:190px;display:flex;align-items:center;gap:8px;background:#F4F1EC;border:1px solid var(--line);border-radius:11px;padding:9px 13px}
+.hero{background:linear-gradient(125deg,#EDE4E0 0%,#E7E2EC 55%,#E1E8E4 130%);color:var(--ink);padding:26px 0 60px;border-bottom:1px solid var(--line);}
+.hero h1{margin:0;font-family:'Frank Ruhl Libre',serif;font-size:31px;font-weight:900;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
+.hero .sub{margin-top:7px;color:#6a6258;font-size:14.5px}
+.toolbar{max-width:1080px;margin:-40px auto 0;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 34px rgba(90,70,60,.10);display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;position:sticky;top:8px;z-index:30}
+.search{flex:1;min-width:170px;display:flex;align-items:center;gap:8px;background:#F4F1EC;border:1px solid var(--line);border-radius:11px;padding:9px 13px;align-self:stretch}
 .search input{border:0;background:transparent;outline:0;width:100%;font-family:inherit;font-size:14px;color:var(--ink)}
-.search:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(126,106,143,.15)}
 .ctl{display:flex;flex-direction:column;gap:2px}
 .ctl label{font-size:10px;color:var(--muted);padding-right:3px}
-.sortsel{border:1px solid var(--line);border-radius:10px;padding:8px 11px;background:var(--card);font-family:inherit;font-size:13.5px;color:var(--ink);cursor:pointer}
-.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;align-self:flex-end}
-.seg button{border:0;background:var(--card);padding:8px 13px;font-family:inherit;font-size:13px;font-weight:600;color:#6a6258;cursor:pointer;transition:.15s}
+.sortsel,.dateinp{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);font-family:inherit;font-size:13.5px;color:var(--ink);cursor:pointer}
+.dateinp{cursor:text}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:8px 12px;font-family:inherit;font-size:13px;font-weight:600;color:#6a6258;cursor:pointer}
 .seg button.on{background:var(--brand);color:#fff}
-
+.btn{border:1px solid var(--line);background:var(--card);border-radius:11px;padding:9px 15px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;color:var(--ink)}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn-primary:hover{background:var(--brand-d);color:#fff}
+.btn-trend{background:linear-gradient(135deg,#B98E3C,#caa052);color:#fff;border:0}
 .chips{max-width:1080px;margin:14px auto 0;padding:0 16px;display:flex;gap:8px;flex-wrap:wrap}
-.jchip{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;color:#5e574c}
-.jchip:hover{border-color:var(--brand);color:var(--brand)}
+.jchip{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:6px 13px;font-size:13px;font-weight:600;cursor:pointer;color:#5e574c}
 .jchip.on{background:var(--brand);color:#fff;border-color:var(--brand)}
-
-.countbar{max-width:1080px;margin:12px auto 0;padding:0 18px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.jchip.tier1{border-color:var(--gold)}
+.countbar{max-width:1080px;margin:12px auto 0;padding:0 18px;color:var(--muted);font-size:13px}
 .countbar b{color:var(--ink)}
-
-/* feed */
 .feed{max-width:1080px;margin:10px auto 60px;padding:0 16px;display:grid;gap:15px}
-.jhead{margin:10px 0 0;padding:7px 15px;font-family:'Frank Ruhl Libre',serif;font-weight:700;font-size:16px;color:var(--ink);border-right:4px solid var(--ink);background:var(--card);border-radius:10px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;
-  box-shadow:0 2px 10px rgba(90,70,60,.05);transition:.18s;animation:rise .4s ease both}
+.jhead{margin:10px 0 0;padding:7px 15px;font-family:'Frank Ruhl Libre',serif;font-weight:700;font-size:16px;border-right:4px solid var(--ink);background:var(--card);border-radius:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:0 2px 10px rgba(90,70,60,.05);transition:.18s;animation:rise .4s ease both}
 .card:hover{box-shadow:0 16px 38px rgba(90,70,60,.12);transform:translateY(-2px)}
+.card.tier1{box-shadow:0 0 0 2px var(--gold),0 2px 10px rgba(90,70,60,.05)}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.card .head{display:flex;gap:16px;align-items:flex-start}
+.head{display:flex;gap:16px;align-items:flex-start}
 .ring{flex:none;width:64px;height:64px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:21px;line-height:1;cursor:help;font-family:'Frank Ruhl Libre',serif}
 .ring small{font-size:9px;font-weight:600;opacity:.85;margin-top:2px;font-family:'Heebo',sans-serif}
 .r-hi{background:var(--hi-bg);color:var(--hi);box-shadow:inset 0 0 0 2px var(--hi)}
 .r-mid{background:var(--mid-bg);color:var(--mid);box-shadow:inset 0 0 0 2px var(--mid)}
 .r-lo{background:var(--lo-bg);color:var(--lo);box-shadow:inset 0 0 0 2px #C9C2B6}
-.ttl{display:block;font-size:18.5px;font-weight:700;line-height:1.45}
+.ttl{display:block;font-size:18px;font-weight:700;line-height:1.45}
 .ttl:hover{color:var(--brand)}
 .meta{color:var(--muted);font-size:13px;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .jpill{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:700;background:#5E584E}
+.crown{color:var(--gold);font-weight:800}
 .tags{margin-top:11px;display:flex;gap:6px;flex-wrap:wrap}
 .tag{border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
 .t-star{background:var(--star-bg);color:var(--star-fg)}
 .t-topic{background:var(--chip-bg);color:var(--chip-fg)}
 .actions{margin-top:14px;display:flex;gap:9px;flex-wrap:wrap}
-.btn{border:1px solid var(--line);background:var(--card);border-radius:11px;padding:9px 16px;font-family:inherit;font-size:14px;
-  font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;color:var(--ink)}
-.btn:hover{border-color:var(--brand);color:var(--brand);background:#F6F2F8}
-.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-.btn-primary:hover{background:var(--brand-d);color:#fff}
-.btn-primary.active{background:var(--brand-d);border-color:var(--brand-d)}
-.btn:focus-visible,.jchip:focus-visible,.sortsel:focus-visible,.search input:focus-visible,.ttl:focus-visible{outline:3px solid var(--brand);outline-offset:2px;border-radius:8px}
 .panel{margin-top:14px;border-top:1px dashed var(--line);padding-top:14px;display:none}
-.panel.open{display:block;animation:rise .3s ease both}
+.panel.open{display:block}
 .abx{color:#4a443b;font-size:14.5px;line-height:1.7}
-
-/* analysis */
 .an-verdict{background:var(--verdict-bg);border-right:5px solid var(--verdict-bd);padding:13px 16px;border-radius:11px;font-weight:700;font-size:15.5px;margin-bottom:12px}
 .an-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.an-h{font-weight:800;font-size:14px;margin:14px 0 7px;display:flex;align-items:center;gap:6px}
+.an-h{font-weight:800;font-size:14px;margin:14px 0 7px}
 .an-strong{background:var(--strong-bg);border-right:3px solid var(--strong-bd);padding:8px 12px;border-radius:9px;margin:6px 0;font-size:13.5px;line-height:1.55}
 .an-weak{background:var(--weak-bg);border-right:3px solid var(--weak-bd);padding:8px 12px;border-radius:9px;margin:6px 0;font-size:13.5px;line-height:1.55}
 .sev{font-weight:800;font-size:11px;border-radius:6px;padding:1px 6px;margin-left:5px;color:#fff}
 .sev-גבוהה{background:#B5736B}.sev-בינונית{background:#B89055}.sev-נמוכה{background:#9aa28f}
 .an-info{background:#EAEFE9;border:1px solid #CFE0CE;padding:11px 14px;border-radius:11px;font-size:14px;line-height:1.65;margin:8px 0}
-.an-bottom{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
-.an-box{background:#F4F1EC;border:1px solid var(--line);border-radius:11px;padding:11px 14px;font-size:13.5px;line-height:1.6}
+.an-box{background:#F4F1EC;border:1px solid var(--line);border-radius:11px;padding:11px 14px;font-size:13.5px;line-height:1.6;margin-top:8px}
 .an-box b{display:block;margin-bottom:5px}
-.an-rounds{margin-top:12px;background:var(--strong-bg);border:1px solid var(--strong-bd);border-radius:11px;padding:11px 14px;font-weight:600}
 .scope-warn{background:var(--mid-bg);border:1px solid #E4CFA0;border-radius:10px;padding:9px 13px;font-size:13px;margin-bottom:10px}
-.badge5{background:var(--ink);color:#fff;border-radius:9px;padding:5px 11px;font-weight:800;font-size:14px;font-family:'Frank Ruhl Libre',serif}
-.empty{text-align:center;color:var(--muted);padding:50px 0}
-@media(max-width:680px){.an-grid,.an-bottom{grid-template-columns:1fr}}
-
-.legend{max-width:1080px;margin:6px auto;padding:0 16px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted)}
-.legend span{display:inline-flex;align-items:center;gap:5px}
-.dot{width:11px;height:11px;border-radius:4px;display:inline-block}
-.explain{max-width:1080px;margin:2px auto 0;padding:0 16px;text-align:center;font-size:12px;color:var(--muted)}
-.foot{max-width:1080px;margin:14px auto 40px;padding:0 16px;color:var(--muted);font-size:12.5px;text-align:center}
-.fab{position:fixed;bottom:22px;left:22px;display:flex;flex-direction:column;gap:10px;z-index:50}
-.fab button{width:46px;height:46px;border-radius:50%;border:0;background:var(--card);color:var(--brand);box-shadow:0 6px 18px rgba(90,70,60,.18);font-size:18px;cursor:pointer;transition:.15s}
-.fab button:hover{background:var(--brand);color:#fff;transform:translateY(-2px)}
-@media print{
-  body{background:#fff}
-  .toolbar,.chips,.fab,.actions,.hero .stats,.countbar{display:none!important}
-  .hero{background:#fff!important;padding:6px 0}
-  .card{break-inside:avoid;box-shadow:none;border:1px solid #ccc;margin-bottom:10px}
-  .panel{display:block!important}
-}
-@media(max-width:680px){
-  .hero h1{font-size:25px}.toolbar{margin-top:-38px}
-  .ring{width:54px;height:54px;font-size:18px}.ttl{font-size:16.5px}
-}
+.badge5{background:var(--ink);color:#fff;border-radius:9px;padding:5px 11px;font-weight:800;font-size:14px}
+.status{max-width:1080px;margin:18px auto;padding:14px 18px;text-align:center;color:var(--muted)}
+.spinner{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-left:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.explain{max-width:1080px;margin:2px auto;padding:0 16px;text-align:center;font-size:12px;color:var(--muted)}
+.legend{max-width:1080px;margin:6px auto;padding:0 16px;display:flex;gap:13px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}.dot{width:11px;height:11px;border-radius:4px;display:inline-block}
+/* trends modal */
+.overlay{position:fixed;inset:0;background:rgba(40,34,30,.45);z-index:100;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 16px}
+.overlay.open{display:flex}
+.modal{background:var(--bg);border-radius:18px;max-width:760px;width:100%;padding:24px 26px;box-shadow:0 30px 70px rgba(0,0,0,.3)}
+.modal h2{font-family:'Frank Ruhl Libre',serif;margin:0 0 4px;font-size:24px;display:flex;align-items:center;gap:8px}
+.trow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);margin:8px 0}
+.tgrow{font-weight:800;font-size:15px;width:74px;text-align:center;border-radius:9px;padding:5px 0}
+.tg-up{background:var(--hi-bg);color:var(--hi)}.tg-flat{background:var(--lo-bg);color:var(--lo)}.tg-down{background:var(--weak-bg);color:#9a4a40}
+.tbar{flex:1}.tbar .lbl{font-weight:600;font-size:14px}.tbar .sm{color:var(--muted);font-size:12px}
+.closeX{float:left;cursor:pointer;font-size:22px;color:var(--muted);border:0;background:none}
+.fab{position:fixed;bottom:22px;left:22px;z-index:50}
+.fab button{width:46px;height:46px;border-radius:50%;border:0;background:var(--card);color:var(--brand);box-shadow:0 6px 18px rgba(90,70,60,.18);font-size:18px;cursor:pointer}
+@media(max-width:680px){.an-grid{grid-template-columns:1fr}.hero h1{font-size:24px}}
 </style>
 </head>
 <body>
 <div class="hero"><div class="wrap">
-  <h1>🩺 LitRadar — דייג'סט שבועי</h1>
-  <div class="sub">המאמרים הנבחרים מעיתוני הליבה · רק RCT, מטא-אנליזות, סקירות והנחיות · מדורגים לפי חשיבות</div>
-  <div class="stats" id="stats"></div>
+  <h1>🩺 LitRadar — מכ"ם ספרות חי</h1>
+  <div class="sub">חיפוש חי ב-PubMed בכל פעם · רק RCT/מטא/סקירות/הנחיות · NEJM·Lancet·JAMA תמיד בראש</div>
 </div></div>
 
 <div class="toolbar">
-  <div class="search">🔎<input id="q" aria-label="חיפוש מאמרים" placeholder="חיפוש בכותרת / תקציר / נושא…" oninput="render()"></div>
+  <div class="search">🔎<input id="q" placeholder="סינון חופשי בתוצאות…" oninput="applyView()"></div>
   <div class="ctl"><label>תקופה</label>
-    <select class="sortsel" id="window" aria-label="טווח זמן" onchange="persist();render()">
-      <option value="7">7 ימים</option><option value="14">14 יום</option>
-      <option value="30">30 יום</option><option value="60">60 יום</option>
-      <option value="90">90 יום</option><option value="0">הכל</option>
+    <select class="sortsel" id="window" onchange="onDatePreset()">
+      <option value="30">30 יום</option><option value="90">90 יום</option>
+      <option value="180">חצי שנה</option><option value="365">שנה</option>
+      <option value="730">שנתיים</option><option value="0">טווח מותאם ↓</option>
     </select></div>
-  <div class="ctl"><label>מקס׳ לעיתון</label>
-    <select class="sortsel" id="perj" aria-label="כמה מכל עיתון" onchange="persist();render()">
+  <div class="ctl"><label>מ-תאריך</label><input type="date" class="dateinp" id="from" onchange="customDate()"></div>
+  <div class="ctl"><label>עד</label><input type="date" class="dateinp" id="to" onchange="customDate()"></div>
+  <div class="ctl"><label>מקס׳/עיתון</label>
+    <select class="sortsel" id="perj" onchange="applyView()">
       <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-      <option value="5">5</option><option value="99">הכל</option>
+      <option value="5">5</option><option value="10">10</option><option value="99">הכל</option>
     </select></div>
-  <div class="ctl"><label>נושא</label>
-    <select class="sortsel" id="topic" aria-label="נושא" onchange="persist();render()"><option value="">הכל</option></select></div>
-  <div class="ctl"><label>מיון</label>
-    <select class="sortsel" id="sort" aria-label="מיון" onchange="persist();render()">
-      <option value="imp">חשיבות</option><option value="date">תאריך</option><option value="journal">עיתון</option>
-    </select></div>
-  <div class="seg">
-    <button id="vr" class="on" onclick="setView('rank')">מדורג</button>
-    <button id="vg" onclick="setView('group')">לפי עיתון</button>
-  </div>
+  <div class="ctl"><label>נושא</label><select class="sortsel" id="topic" onchange="applyView()"><option value="">הכל</option></select></div>
+  <div class="ctl"><label>מיון</label><select class="sortsel" id="sort" onchange="applyView()"><option value="imp">חשיבות</option><option value="date">תאריך</option></select></div>
+  <button class="btn btn-primary" onclick="runSearch()">🔄 חפש</button>
+  <button class="btn btn-trend" onclick="openTrends()">📈 מגמות בתחום</button>
 </div>
 <div class="chips" id="chips"></div>
 <div class="countbar" id="countbar"></div>
+<div class="status" id="status"></div>
 <div class="feed" id="feed"></div>
 <div class="legend" id="legend"></div>
-<div class="explain">ℹ️ ציון החשיבות = רמת ראיות (סוג מחקר) ‎40%‎ + השפעת העיתון ‎30%‎ + מעמד החוקרים (h-index) ‎30%‎ · רחף מעל העיגול לפירוט</div>
-<div class="foot" id="foot"></div>
-<div class="fab">
-  <button title="הדפסה לג'רנל קלאב" aria-label="הדפסה" onclick="printAll()">🖨</button>
-  <button title="חזרה למעלה" aria-label="חזרה למעלה" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<div class="explain">ℹ️ ציון = רמת ראיות ‎40%‎ + השפעת העיתון ‎30%‎ + מעמד החוקרים (h-index) ‎30%‎ · רחף מעל העיגול</div>
+
+<div class="overlay" id="trendsOverlay">
+  <div class="modal">
+    <button class="closeX" onclick="closeTrends()">✕</button>
+    <h2>📈 מגמות בתחום</h2>
+    <div class="sub" style="color:var(--muted);font-size:13px;margin-bottom:10px">גידול בנפח הפרסום ב-PubMed: 12 חודשים אחרונים מול 12 הקודמים</div>
+    <div id="trendsBody"></div>
+  </div>
 </div>
+<div class="fab"><button title="חזרה למעלה" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button></div>
 
 <script>
-const DATA = /*__DATA__*/;
-const META = /*__META__*/;
-let activeJournal=null, viewMode='rank';
-const JCOLOR={'AJOG':'#B08299','Green Journal':'#7E9B7E','BJOG':'#7E94B0','NEJM':'#A87E6C','Lancet':'#9E8AA8','Ultrasound O&G':'#5F9494'};
-function jColor(n){return JCOLOR[n]||'#5E584E';}
-function ringCls(v){return v>=65?'r-hi':v>=52?'r-mid':'r-lo';}
+const CFG = /*__CFG__*/;
+const ANALYSES = /*__ANALYSES__*/;
+const EUT='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
+const TAIL='&tool=LitRadar&email=giladshahak@gmail.com';
+let state={articles:[], activeJournal:null};
+
+// ---- rate-limited fetch gates ----
+function makeGate(spacing){let q=Promise.resolve();return fn=>{const r=q.then(fn);q=r.catch(()=>{}).then(()=>new Promise(s=>setTimeout(s,spacing)));return r;};}
+const ncbiGate=makeGate(340);   // ~3/sec
+const oaGate=makeGate(130);
+
+async function eutilsJSON(url){return ncbiGate(()=>fetch(url).then(r=>r.json()));}
+async function eutilsText(url){return ncbiGate(()=>fetch(url).then(r=>r.text()));}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function hvLabel(a){
-  const pt=(a.pub_types||[]).join(' '),t=(a.title||'').toLowerCase();
+function pad(n){return n<10?'0'+n:''+n;}
+function isoToSlash(d){return d?d.replace(/-/g,'/'):'';}
+
+// ---- date clause ----
+function dateClause(){
+  const f=document.getElementById('from').value, t=document.getElementById('to').value;
+  if(f||t){const a=isoToSlash(f)||'1900/01/01', b=isoToSlash(t)||'3000/01/01';return `&datetype=pdat&mindate=${a}&maxdate=${b}`;}
+  const w=+document.getElementById('window').value||30;
+  return `&datetype=pdat&reldate=${w}`;
+}
+function onDatePreset(){const w=document.getElementById('window').value; if(w!=='0'){document.getElementById('from').value='';document.getElementById('to').value='';} runSearch();}
+function customDate(){runSearch();}
+
+// ---- PubMed search ----
+function journalTerm(j){
+  let t=`(${j.issn_e}[IS] OR ${j.issn}[IS])`;
+  if(j.filter_obgyn) t+=` AND ${CFG.obgyn_filter}`;
+  t+=` AND ${CFG.high_value_filter}`;
+  return t;
+}
+async function esearch(term){
+  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&retmax=60&sort=pub_date&term='+encodeURIComponent(term)+dateClause()+TAIL;
+  const j=await eutilsJSON(url); return (j.esearchresult&&j.esearchresult.idlist)||[];
+}
+async function efetch(pmids){
+  if(!pmids.length) return [];
+  const url=EUT+'efetch.fcgi?db=pubmed&retmode=xml&id='+pmids.join(',')+TAIL;
+  const xml=await eutilsText(url);
+  return parsePubmed(xml);
+}
+function parsePubmed(xmlText){
+  const doc=new DOMParser().parseFromString(xmlText,'text/xml');
+  const out=[];
+  doc.querySelectorAll('PubmedArticle').forEach(pa=>{
+    const pmid=(pa.querySelector('MedlineCitation>PMID')||{}).textContent||'';
+    const art=pa.querySelector('Article'); if(!art)return;
+    const title=(art.querySelector('ArticleTitle')||{}).textContent||'';
+    let abs=[...art.querySelectorAll('Abstract>AbstractText')].map(n=>{const l=n.getAttribute('Label');return (l?l+': ':'')+n.textContent;}).join('\n');
+    const issn=(art.querySelector('Journal>ISSN')||{}).textContent||'';
+    const jtitle=(art.querySelector('Journal>Title')||{}).textContent||'';
+    const authors=[...art.querySelectorAll('AuthorList>Author')].map(a=>{const ln=(a.querySelector('LastName')||{}).textContent;const fn=(a.querySelector('ForeName')||{}).textContent;return ln?(ln+(fn?' '+fn:'')):null;}).filter(Boolean);
+    const ptypes=[...art.querySelectorAll('PublicationTypeList>PublicationType')].map(n=>n.textContent);
+    const mesh=[...pa.querySelectorAll('MeshHeading>DescriptorName')].map(n=>n.textContent);
+    let doi='';pa.querySelectorAll('ArticleIdList>ArticleId').forEach(n=>{if(n.getAttribute('IdType')==='doi')doi=n.textContent;});
+    // date
+    let d='';const ad=art.querySelector('ArticleDate')||art.querySelector('Journal JournalIssue PubDate');
+    if(ad){const y=(ad.querySelector('Year')||{}).textContent;let m=(ad.querySelector('Month')||{}).textContent||'01';const dd=(ad.querySelector('Day')||{}).textContent||'01';const mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};if(isNaN(+m))m=mm[(m||'').slice(0,3).toLowerCase()]||'01';if(y)d=`${y}-${pad(+m)}-${pad(+dd)}`;}
+    out.push({pmid,title,abstract:abs,issn,journal_full:jtitle,authors,pub_types:ptypes,mesh,doi,date:d});
+  });
+  return out;
+}
+
+// ---- scoring (mirrors Python) ----
+const J_BY_ISSN={}; CFG.journals.forEach(j=>{J_BY_ISSN[j.issn]=j;J_BY_ISSN[j.issn_e]=j;});
+function journalOf(a){return J_BY_ISSN[a.issn]||null;}
+function designScore(a){const blob=(a.pub_types.join(' ')+' '+a.title).toLowerCase();for(const[kws,rank]of CFG.design_rank){if(kws.some(k=>blob.includes(k.toLowerCase())))return rank;}return CFG.design_default;}
+function journalScore(a){const j=journalOf(a);return (j?j.weight:4)/CFG.max_weight;}
+function authorScore(h){if(h==null)return 0.30;return Math.min(Math.log1p(Math.max(h,0))/Math.log1p(CFG.author_top),1);}
+function scoreOf(a){const d=designScore(a),jr=journalScore(a),au=authorScore(a.hindex);
+  const w=CFG.weights;const total=(w.design*d+w.journal*jr+w.author*au)*100;
+  a.b={design:Math.round(d*100),journal:Math.round(jr*100),author:Math.round(au*100),hindex:a.hindex};
+  a.importance=Math.round(total*10)/10;return a.importance;}
+function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCase();let hits=CFG.topics.filter(([n,kw])=>kw.some(k=>strong.includes(k.toLowerCase()))).map(x=>x[0]);
+  if(!hits.length){const blob=strong+' '+a.abstract.toLowerCase();hits=CFG.topics.filter(([n,kw])=>kw.some(k=>blob.includes(k.toLowerCase()))).map(x=>x[0]);}
+  return hits.length?hits:[CFG.default_topic];}
+
+// ---- run live search ----
+function setStatus(html){document.getElementById('status').innerHTML=html;}
+async function runSearch(){
+  const journals=state.activeJournal?CFG.journals.filter(j=>j.nick===state.activeJournal):CFG.journals;
+  setStatus('סורק את PubMed בזמן אמת… <span class="spinner"></span>');
+  document.getElementById('feed').innerHTML='';
+  try{
+    // esearch per journal (parallel via gate)
+    const idLists=await Promise.all(journals.map(j=>esearch(journalTerm(j)).catch(()=>[])));
+    const allIds=[...new Set([].concat(...idLists))];
+    if(!allIds.length){setStatus('לא נמצאו מאמרים בטווח הזה. נסה להרחיב את התקופה.');state.articles=[];renderChips();document.getElementById('countbar').innerHTML='';return;}
+    // efetch in chunks of 150
+    let arts=[];
+    for(let i=0;i<allIds.length;i+=150){arts=arts.concat(await efetch(allIds.slice(i,i+150)));}
+    arts.forEach(a=>{a.topics=classify(a);a.hindex=null;scoreOf(a);});
+    // keep only those from our journals
+    arts=arts.filter(a=>journalOf(a));
+    state.articles=arts;
+    setStatus('');
+    applyView();
+    enrichAuthors();   // async OpenAlex
+  }catch(e){setStatus('שגיאה בחיפוש: '+e);}
+}
+
+// ---- client-side view (cap/sort/filter) ----
+function tierOf(a){const j=journalOf(a);return j?j.tier:2;}
+function applyView(){
+  if(!state.articles.length){document.getElementById('feed').innerHTML='';return;}
+  const q=(document.getElementById('q').value||'').toLowerCase().trim();
+  const perj=+document.getElementById('perj').value;
+  const topic=document.getElementById('topic').value;
+  const sortBy=document.getElementById('sort').value;
+  let list=state.articles.filter(a=>{
+    if(topic&&!a.topics.includes(topic))return false;
+    if(q&&!(a.title+' '+a.abstract).toLowerCase().includes(q))return false;
+    return true;
+  });
+  // cap per journal by importance
+  list.sort((x,y)=>y.importance-x.importance);
+  const byJ={};list=list.filter(a=>{const j=journalOf(a).nick;byJ[j]=(byJ[j]||0)+1;return byJ[j]<=perj;});
+  if(CFG.max_total&&list.length>CFG.max_total)list=list.slice(0,CFG.max_total);
+  // sort: tier1 first, then chosen sort
+  const key=sortBy==='date'?(a=>a.date||''):(a=>a.importance);
+  list.sort((x,y)=>(tierOf(x)-tierOf(y))|| (sortBy==='date'?(''+key(y)).localeCompare(''+key(x)):key(y)-key(x)));
+  document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
+  renderChips();
+  const feed=document.getElementById('feed');
+  feed.innerHTML=list.map((a,i)=>cardHTML(a,i)).join('');
+  state.shown=list;
+}
+function renderChips(){
+  const counts={};state.articles.forEach(a=>{const j=journalOf(a);if(j)counts[j.nick]=(counts[j.nick]||0)+1;});
+  const el=document.getElementById('chips');el.innerHTML='';
+  const all=document.createElement('div');all.className='jchip'+(state.activeJournal?'':' on');all.textContent='הכל';all.onclick=()=>{state.activeJournal=null;runSearch();};el.appendChild(all);
+  CFG.journals.forEach(j=>{const c=document.createElement('div');c.className='jchip'+(j.tier===1?' tier1':'')+(state.activeJournal===j.nick?' on':'');c.textContent=(j.tier===1?'👑 ':'')+j.nick+(counts[j.nick]?' ('+counts[j.nick]+')':'');c.onclick=()=>{state.activeJournal=state.activeJournal===j.nick?null:j.nick;runSearch();};el.appendChild(c);});
+}
+function renderLegend(){document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+CFG.journals.map(j=>`<span>${j.tier===1?'👑':'<i class="dot" style="background:#7E94B0"></i>'}${esc(j.nick)}</span>`).join(' · ');}
+
+function ringCls(v){return v>=65?'r-hi':v>=52?'r-mid':'r-lo';}
+function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
   if(pt.includes('Randomized')||t.includes('randomi'))return'RCT';
-  if(pt.includes('Meta-Analysis')||t.includes('meta-analysis')||t.includes('metaanalysis'))return'מטא-אנליזה';
+  if(pt.includes('Meta-Analysis')||t.includes('meta-analysis'))return'מטא-אנליזה';
   if(pt.includes('Systematic Review')||t.includes('systematic review'))return'סקירה שיטתית';
   if(pt.includes('Guideline')||t.includes('guideline')||t.includes('committee opinion'))return'הנחיה';
-  if(pt.includes('Phase III')||t.includes('phase 3')||t.includes('phase iii'))return'Phase III';
-  return null;
-}
-function cutoffDate(days){
-  if(!days)return '0000-00-00';
-  const t=new Date(META.today_iso+'T00:00:00'); t.setDate(t.getDate()-days);
-  return t.toISOString().slice(0,10);
-}
-function renderStats(){
-  document.getElementById('stats').innerHTML =
-    `<div><b id="liveCount">${META.count}</b> מאמרים מוצגים</div>`+
-    `<div><b>${META.journals.length}</b> עיתוני ליבה</div>`+
-    `<div><b id="liveWin">${META.default_window}</b> ימים אחרונים</div>`+
-    `<div><b id="livePerj">${META.default_per_journal}</b> מקס׳ לעיתון</div>`+
-    (META.generated?`<div><b>${esc(META.generated)}</b> עודכן</div>`:'');
-  document.getElementById('foot').textContent='LitRadar · כלי עזר לקריאה ביקורתית — אינו תחליף לקריאת המאמר המלא ולשיקול דעת קליני.';
-}
-function renderChips(list){
-  const counts={}; list.forEach(a=>counts[a.journal]=(counts[a.journal]||0)+1);
-  const el=document.getElementById('chips'); el.innerHTML='';
-  const all=document.createElement('div'); all.className='jchip'+(activeJournal?'':' on');
-  all.textContent='הכל'; all.onclick=()=>{activeJournal=null;render();}; el.appendChild(all);
-  META.journals.forEach(j=>{
-    const c=document.createElement('div'); c.className='jchip'+(activeJournal===j?' on':'');
-    c.style.borderRightColor=jColor(j);
-    c.textContent=j+(counts[j]?' ('+counts[j]+')':''); c.onclick=()=>{activeJournal=activeJournal===j?null:j;render();};
-    el.appendChild(c);
-  });
-}
-function renderLegend(){
-  document.getElementById('legend').innerHTML='<b>עיתוני ליבה:</b> '+
-    META.journals.map(j=>`<span><i class="dot" style="background:${jColor(j)}"></i>${esc(j)}</span>`).join('');
-}
-function analysisHTML(an,scope){
-  if(!an)return '<div class="an-info">אין עדיין ניתוח שמור למאמר זה. הניתוח האוטומטי ("המבקר הקליני") ירוץ באפליקציה עם מפתח ה-API.</div>';
-  let h='';
-  if(scope==='ABSTRACT_ONLY')h+='<div class="scope-warn">⚠️ ניתוח מבוסס תקציר בלבד.</div>';
-  if(an.source_scope_warning)h+='<div class="scope-warn">'+esc(an.source_scope_warning)+'</div>';
-  h+=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="badge5">${esc(String(an.critic_score))}/5</span><div class="an-verdict" style="flex:1;margin:0">⚖️ ${esc(an.verdict_line)}</div></div>`;
-  if(an.score_rationale)h+=`<div style="color:var(--muted);font-size:13px;margin-bottom:6px">${esc(an.score_rationale)}</div>`;
-  if(an.evidence_level)h+=`<div style="font-size:13.5px;margin-bottom:8px"><b>רמת ראיות:</b> ${esc(an.evidence_level)}</div>`;
-  const s=an.study_snapshot||{};
-  h+=`<div class="an-box"><b>📋 תמצית המחקר</b>תכנון: ${esc(s.design)} · אוכלוסייה: ${esc(s.population)} · N: ${esc(s.n)}<br>תוצא ראשוני: ${esc(s.primary_outcome)}<br>תוצאה: ${esc(s.key_result)}</div>`;
-  h+='<div class="an-grid"><div><div class="an-h">✅ חוזקות</div>';
-  (an.strengths||[]).forEach(x=>h+=`<div class="an-strong">${esc(x)}</div>`);
-  h+='</div><div><div class="an-h">⚠️ חולשות</div>';
-  (an.weaknesses||[]).forEach(w=>{if(typeof w==='object')h+=`<div class="an-weak"><span class="sev sev-${esc(w.severity)}">${esc(w.severity)}</span>${esc(w.issue)}<br><small>${esc(w.impact)}</small></div>`;else h+=`<div class="an-weak">${esc(w)}</div>`;});
-  h+='</div></div>';
-  if(an.spin_alert&&an.spin_alert.detected)h+=`<div class="an-h">🎈 התראת Spin</div><div class="an-weak"><b>ציטוט:</b> "${esc(an.spin_alert.quote)}"<br><b>המציאות:</b> ${esc(an.spin_alert.reality)}</div>`;
-  if((an.stats_red_flags||[]).length){h+='<div class="an-h">🚩 דגלים סטטיסטיים</div>';an.stats_red_flags.forEach(f=>h+=`<div class="an-weak">${esc(f)}</div>`);}
-  h+=`<div class="an-h">🩺 שורה תחתונה קלינית</div><div class="an-info">${esc(an.clinical_bottom_line)}</div>`;
-  h+=`<div class="an-bottom"><div class="an-box"><b>🔄 מה היה משנה את ההכרעה</b>${esc(an.what_would_change_my_mind)}</div><div class="an-box"><b>😈 פרקליט השטן</b>${esc(an.devils_advocate)}</div></div>`;
-  if(an.one_liner_for_rounds)h+=`<div class="an-rounds">💬 לג'רנל קלאב: "${esc(an.one_liner_for_rounds)}"</div>`;
-  return h;
-}
+  if(pt.includes('Phase III')||t.includes('phase 3'))return'Phase III';return null;}
 function cardHTML(a,i){
-  const hv=hvLabel(a), b=a.breakdown||{};
-  const auth=(a.authors||[]), am=auth.length?(esc(auth[0])+(auth.length>1?' et al.':'')):'';
-  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · השפעת עיתון ${b.journal} · מעמד חוקרים ${b.author}${b.hindex!=null?' (h-index '+b.hindex+')':''}`;
-  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+(a.topics||[]).map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
-  return `<div class="card" style="animation-delay:${i*28}ms;border-right:5px solid ${jColor(a.journal)}">
+  const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
+  const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
+  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · מעמד חוקרים ${b.author}${a.hindex!=null?' (h-index '+a.hindex+')':' (טוען…)'}`;
+  const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
+  const an=ANALYSES[a.pmid];
+  return `<div class="card${j.tier===1?' tier1':''}">
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
       <div style="flex:1">
         <a class="ttl" dir="auto" href="https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/" target="_blank">${esc(a.title)}</a>
-        <div class="meta"><span class="jpill" style="background:${jColor(a.journal)}">${esc(a.journal)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}${b.hindex!=null?'<span title="h-index של החוקר המשפיע ביותר בצוות">· 👤 h-index '+b.hindex+'</span>':''}</div>
+        <div class="meta"><span class="jpill" style="background:${j.tier===1?'#B98E3C':'#5E584E'}">${j.tier===1?'👑 ':''}${esc(j.nick)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${a.hindex!=null?'· 👤 h-index '+a.hindex:''}</span></div>
         <div class="tags">${tags}</div>
         <div class="actions">
-          <button class="btn btn-primary" onclick="toggleAn(this,${i})">⚡ ניתוח ביקורתי</button>
-          <button class="btn" onclick="toggle(${i},'ab')">📄 תקציר</button>
+          <button class="btn btn-primary" onclick="toggleAn('${a.pmid}',this)">⚡ ניתוח ביקורתי</button>
+          <button class="btn" onclick="document.getElementById('ab-${a.pmid}').classList.toggle('open')">📄 תקציר</button>
           ${a.doi?`<a class="btn" href="https://doi.org/${esc(a.doi)}" target="_blank">🔗 מקור</a>`:''}
         </div>
-        <div class="panel" id="ab-${i}"><div class="abx" dir="auto">${esc(a.abstract)||'— אין תקציר —'}</div></div>
-        <div class="panel" id="an-${i}">${analysisHTML(a.analysis,a.analysis_scope)}</div>
+        <div class="panel" id="ab-${a.pmid}"><div class="abx" dir="auto">${esc(a.abstract)||'— אין תקציר —'}</div></div>
+        <div class="panel" id="an-${a.pmid}">${an?analysisHTML(an.payload,an.scope):'<div class="an-info">אין עדיין ניתוח שמור. הניתוח האוטומטי ("המבקר הקליני") ירוץ באפליקציה עם מפתח ה-API.</div>'}</div>
       </div>
     </div></div>`;
 }
-function toggle(i,k){document.getElementById(k+'-'+i).classList.toggle('open');}
-function toggleAn(btn,i){const p=document.getElementById('an-'+i);const o=p.classList.toggle('open');btn.classList.toggle('active',o);btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';}
-function setView(m){viewMode=m;document.getElementById('vr').classList.toggle('on',m==='rank');document.getElementById('vg').classList.toggle('on',m==='group');persist();render();}
-function printAll(){document.querySelectorAll('[id^="an-"]').forEach(p=>p.classList.add('open'));setTimeout(()=>window.print(),60);}
+function toggleAn(pmid,btn){const p=document.getElementById('an-'+pmid);const o=p.classList.toggle('open');btn.innerHTML=o?'✕ סגור ניתוח':'⚡ ניתוח ביקורתי';}
+function analysisHTML(an,scope){
+  let h='';if(scope==='ABSTRACT_ONLY')h+='<div class="scope-warn">⚠️ ניתוח מבוסס תקציר בלבד.</div>';
+  h+=`<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="badge5">${esc(String(an.critic_score))}/5</span><div class="an-verdict" style="flex:1;margin:0">⚖️ ${esc(an.verdict_line)}</div></div>`;
+  if(an.evidence_level)h+=`<div style="font-size:13.5px;margin-bottom:8px"><b>רמת ראיות:</b> ${esc(an.evidence_level)}</div>`;
+  const s=an.study_snapshot||{};h+=`<div class="an-box"><b>📋 תמצית</b>תכנון: ${esc(s.design)} · N: ${esc(s.n)}<br>תוצאה: ${esc(s.key_result)}</div>`;
+  h+='<div class="an-grid"><div><div class="an-h">✅ חוזקות</div>';(an.strengths||[]).forEach(x=>h+=`<div class="an-strong">${esc(x)}</div>`);
+  h+='</div><div><div class="an-h">⚠️ חולשות</div>';(an.weaknesses||[]).forEach(w=>{if(typeof w==='object')h+=`<div class="an-weak"><span class="sev sev-${esc(w.severity)}">${esc(w.severity)}</span>${esc(w.issue)}</div>`;else h+=`<div class="an-weak">${esc(w)}</div>`;});h+='</div></div>';
+  h+=`<div class="an-h">🩺 שורה תחתונה</div><div class="an-info">${esc(an.clinical_bottom_line)}</div>`;
+  if(an.one_liner_for_rounds)h+=`<div class="an-box"><b>💬 לג'רנל קלאב</b>${esc(an.one_liner_for_rounds)}</div>`;
+  return h;
+}
 
-function render(){
-  const q=(document.getElementById('q').value||'').toLowerCase().trim();
-  const win=+document.getElementById('window').value;
-  const perj=+document.getElementById('perj').value;
-  const topic=document.getElementById('topic').value;
-  const sort=document.getElementById('sort').value;
-  const cut=cutoffDate(win);
-  // 1) סינון: עיתון פעיל, נושא, חיפוש, חלון זמן
-  let list=DATA.filter(a=>{
-    if(activeJournal&&a.journal!==activeJournal)return false;
-    if(topic&&!(a.topics||[]).includes(topic))return false;
-    if(win&&(a.date||'')<cut)return false;
-    if(q&&!(a.title+' '+a.abstract+' '+(a.topics||[]).join(' ')).toLowerCase().includes(q))return false;
-    return true;
-  });
-  // 2) תקרה לכל עיתון (לפי חשיבות)
-  const byJ={}; list.sort((x,y)=>y.importance-x.importance);
-  list=list.filter(a=>{byJ[a.journal]=(byJ[a.journal]||0)+1;return byJ[a.journal]<=perj;});
-  // 3) תקרה כוללת
-  if(META.max_total&&list.length>META.max_total)list=list.slice(0,META.max_total);
-  // עדכון מונים
-  const lc=document.getElementById('liveCount'),lw=document.getElementById('liveWin'),lp=document.getElementById('livePerj');
-  if(lc)lc.textContent=list.length; if(lw)lw.textContent=win?win:'הכל'; if(lp)lp.textContent=perj>=99?'הכל':perj;
-  document.getElementById('countbar').innerHTML=`מציג <b>${list.length}</b> מאמרים · חלון <b>${win?win+' ימים':'הכל'}</b> · עד <b>${perj>=99?'הכל':perj}</b> לעיתון`;
-  renderChips(list);
-  // 4) מיון תצוגה
-  if(sort==='imp')list.sort((x,y)=>y.importance-x.importance);
-  if(sort==='date')list.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
-  if(sort==='journal')list.sort((x,y)=>(x.journal||'').localeCompare(y.journal||''));
-  const feed=document.getElementById('feed');
-  if(!list.length){feed.innerHTML='<div class="empty">לא נמצאו מאמרים תואמים. נסה להרחיב את התקופה.</div>';return;}
-  if(viewMode==='group'){
-    const order={}; META.journals.forEach((j,k)=>order[j]=k);
-    list.sort((x,y)=>(order[x.journal]??99)-(order[y.journal]??99)||y.importance-x.importance);
-    let html='',last=null,idx=0;
-    list.forEach(a=>{if(a.journal!==last){html+=`<div class="jhead" style="border-color:${jColor(a.journal)}">${esc(a.journal)}</div>`;last=a.journal;}html+=cardHTML(a,idx++);});
-    feed.innerHTML=html;
-  } else { feed.innerHTML=list.map((a,i)=>cardHTML(a,i)).join(''); }
+// ---- OpenAlex author enrichment (senior author h-index) ----
+async function enrichAuthors(){
+  const arts=(state.shown||state.articles).filter(a=>a.doi && a.hindex==null);
+  await Promise.all(arts.map(a=>oaGate(async()=>{
+    try{
+      const w=await fetch('https://api.openalex.org/works/doi:'+encodeURIComponent(a.doi)+'?mailto=giladshahak@gmail.com').then(r=>r.json());
+      const aus=(w.authorships||[]).map(x=>x.author&&x.author.id).filter(Boolean);
+      let best=null;
+      // check up to first 3 + last 2 authors, take max h-index
+      const ids=[...aus.slice(0,3),...aus.slice(-2)];
+      for(const u of [...new Set(ids)]){
+        const aj=await fetch('https://api.openalex.org/authors/'+u.split('/').pop()+'?mailto=giladshahak@gmail.com').then(r=>r.json());
+        const hh=(aj.summary_stats||{}).h_index;if(hh!=null&&(best==null||hh>best))best=hh;
+      }
+      a.hindex=best==null?0:best;
+    }catch(e){a.hindex=0;}
+    scoreOf(a);
+    const el=document.getElementById('h-'+a.pmid);if(el)el.innerHTML=a.hindex?'· 👤 h-index '+a.hindex:'';
+  })));
+  applyView();   // re-rank with author scores
 }
-function populateTopics(){
-  const set=new Set(); DATA.forEach(a=>(a.topics||[]).forEach(t=>set.add(t)));
-  const sel=document.getElementById('topic');
-  [...set].sort().forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+
+// ---- Trends agent ----
+async function countQuery(term,minD,maxD){
+  const url=EUT+'esearch.fcgi?db=pubmed&retmode=json&rettype=count&retmax=0&datetype=pdat&mindate='+minD+'&maxdate='+maxD+'&term='+encodeURIComponent(term)+TAIL;
+  const j=await eutilsJSON(url);return +(j.esearchresult&&j.esearchresult.count||0);
 }
-function persist(){try{['window','perj','topic','sort'].forEach(id=>localStorage.setItem('lr_'+id,document.getElementById(id).value));localStorage.setItem('lr_view',viewMode);}catch(e){}}
-function loadPrefs(){try{
-  ['window','perj','topic','sort'].forEach(id=>{const v=localStorage.getItem('lr_'+id);if(v!==null&&[...document.getElementById(id).options].some(o=>o.value===v))document.getElementById(id).value=v;});
-  const vw=localStorage.getItem('lr_view'); if(vw)setView(vw);
-}catch(e){}}
-document.addEventListener('keydown',e=>{
-  if(e.key==='/'&&document.activeElement.id!=='q'){e.preventDefault();document.getElementById('q').focus();}
-  if(e.key==='Escape'&&document.activeElement.id==='q'){document.getElementById('q').value='';render();}
-});
-// init
-document.getElementById('window').value=String(META.default_window);
-document.getElementById('perj').value=String(META.default_per_journal);
-renderStats();populateTopics();renderLegend();loadPrefs();render();
+function daysAgo(n){const t=new Date(CFG.today_iso+'T00:00:00');t.setDate(t.getDate()-n);return `${t.getFullYear()}/${pad(t.getMonth()+1)}/${pad(t.getDate())}`;}
+async function openTrends(){
+  document.getElementById('trendsOverlay').classList.add('open');
+  const body=document.getElementById('trendsBody');
+  body.innerHTML='מנתח את הספרות בשנתיים האחרונות… <span class="spinner"></span>';
+  const now=daysAgo(0), y1=daysAgo(365), y2=daysAgo(730);
+  const res=[];
+  let done=0; const N=CFG.trend_topics.length;
+  // countQuery כבר עובר דרך ncbiGate — אסור לעטוף שוב (deadlock). מריצים ישירות.
+  await Promise.all(CFG.trend_topics.map(async([label,q])=>{
+    try{
+      const recent=await countQuery(q,y1,now);
+      const prior=await countQuery(q,y2,y1);
+      res.push({label,recent,prior,growth:prior>0?(recent-prior)/prior:(recent>0?1:0)});
+    }catch(e){res.push({label,recent:0,prior:0,growth:0});}
+    done++;document.getElementById('trendsBody').innerHTML=`מנתח… ${done}/${N} נושאים <span class="spinner"></span>`;
+  }));
+  res.sort((a,b)=>b.growth-a.growth || b.recent-a.recent);
+  body.innerHTML=res.map(r=>{
+    const pct=Math.round(r.growth*100);
+    const cls=pct>=15?'tg-up':pct<=-15?'tg-down':'tg-flat';
+    const arrow=pct>=15?'📈':pct<=-15?'📉':'➡️';
+    return `<div class="trow"><div class="tgrow ${cls}">${arrow} ${pct>0?'+':''}${pct}%</div>
+      <div class="tbar"><div class="lbl">${esc(r.label)}</div><div class="sm">${r.recent} פרסומים בשנה האחרונה · ${r.prior} בקודמת</div></div></div>`;
+  }).join('')+'<div class="sm" style="color:var(--muted);font-size:11px;margin-top:10px;text-align:center">מבוסס על ספירת פרסומים ב-PubMed לפי נושא. ערוך את רשימת הנושאים ב-config.TREND_TOPICS</div>';
+}
+function closeTrends(){document.getElementById('trendsOverlay').classList.remove('open');}
+
+// ---- init ----
+function init(){
+  document.getElementById('window').value=String(CFG.default_window>=30?CFG.default_window:30);
+  document.getElementById('perj').value=String(CFG.default_per_journal);
+  const ts=document.getElementById('topic');CFG.topics.forEach(([n])=>{const o=document.createElement('option');o.value=n;o.textContent=n;ts.appendChild(o);});
+  renderLegend();renderChips();runSearch();
+}
+init();
 </script>
 </body>
 </html>

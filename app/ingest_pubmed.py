@@ -190,6 +190,16 @@ def fetch_new(lookback_days: int = DEFAULT_LOOKBACK_DAYS, progress=None,
             progress(f'  ✓ {j["name"]}: {len(articles)} מאמרים חדשים')
         time.sleep(0.4)
 
+    # העשרת מחברים (h-index) — best-effort, לא חוסם
+    try:
+        from .enrich import enrich_missing
+        if progress:
+            progress("מעשיר נתוני מחברים (h-index)…")
+        enrich_missing(progress=progress)
+    except Exception as e:
+        if progress:
+            progress(f"  ⚠ העשרת מחברים נכשלה: {e}")
+
     db.set_meta("last_run", db.now_iso())
     summary = {"fetched": seen, "new": new_count}
     if progress:

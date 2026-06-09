@@ -1,8 +1,8 @@
-"""חישוב ציון חשיבות (0..100) — פשוט ושקוף: סוג מחקר + עיתון + טריות."""
+"""חישוב ציון חשיבות (0..100) — אובייקטיבי: רמת ראיות + עיתון + מעמד החוקרים."""
 import math
-from datetime import date
 
-from .config import (SCORE_WEIGHTS, DESIGN_RANK, DESIGN_RANK_DEFAULT, JOURNALS)
+from .config import (SCORE_WEIGHTS, DESIGN_RANK, DESIGN_RANK_DEFAULT, JOURNALS,
+                     AUTHOR_HINDEX_TOP)
 
 # מפתח לפי print + electronic ISSN (מאמרים מאוחסנים עם ה-electronic)
 _JOURNAL_WEIGHT = {}
@@ -27,22 +27,18 @@ def _design_component(pub_types: list[str], title: str = "") -> float:
     return DESIGN_RANK_DEFAULT
 
 
-def _recency_component(pub_date: str | None, half_life_days: int = 120) -> float:
-    """דעיכה מעריכית: מאמר טרי = ~1.0, מתחצה כל ~4 חודשים."""
-    if not pub_date:
-        return 0.5
+def _author_component(hindex) -> float:
+    """
+    מעמד החוקרים — נרמול לוגריתמי של ה-h-index המקסימלי בין המחברים.
+    h-index גבוה = חוקר משפיע בתחומו. None (אין נתון) = ציון ניטרלי-נמוך.
+    """
+    if hindex is None:
+        return 0.30
     try:
-        y, m, d = (int(x) for x in pub_date[:10].split("-"))
-        age = (date.today() - date(y, m, d)).days
+        h = max(int(hindex), 0)
     except (ValueError, TypeError):
-        return 0.5
-    age = max(age, 0)
-    return math.exp(-math.log(2) * age / half_life_days)
-
-
-_DESIGN_LABEL = "סוג מחקר"
-_JOURNAL_LABEL = "עיתון"
-_RECENCY_LABEL = "טריות"
+        return 0.30
+    return min(math.log1p(h) / math.log1p(AUTHOR_HINDEX_TOP), 1.0)
 
 
 def importance_breakdown(article: dict) -> dict:
@@ -50,13 +46,14 @@ def importance_breakdown(article: dict) -> dict:
     comp = {
         "design":  _design_component(article.get("pub_types", []), article.get("title", "")),
         "journal": _journal_component(article.get("journal_issn")),
-        "recency": _recency_component(article.get("pub_date")),
+        "author":  _author_component(article.get("author_hindex")),
     }
     total = sum(SCORE_WEIGHTS[k] * v for k, v in comp.items()) * 100
     return {
         "design":  round(comp["design"] * 100),
         "journal": round(comp["journal"] * 100),
-        "recency": round(comp["recency"] * 100),
+        "author":  round(comp["author"] * 100),
+        "hindex":  article.get("author_hindex"),
         "total":   round(total, 1),
     }
 

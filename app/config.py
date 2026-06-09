@@ -90,44 +90,48 @@ HIGH_VALUE_FILTER = (
     ')'
 )
 
-# ── מיפוי נושאים (MeSH → קטגוריה בעברית) ───────────────────────────────
-# נבדק לפי הכלה של המחרוזת ב-MeSH terms של המאמר. הסדר חשוב (ראשון שמתאים זוכה,
-# אך מאמר יכול לקבל כמה תגיות). ערוך בחופשיות.
+# ── מיפוי נושאים — 6 קטגוריות בלבד (לפי בקשת המשתמש) ───────────────────
+# נבדק לפי הכלת מילת מפתח ב-MeSH/כותרת/תקציר. מאמר יכול לקבל כמה תגיות.
 TOPIC_MAP = [
-    ("פוריות ו-IVF",        ["Reproductive Techniques", "Fertilization in Vitro", "Infertility",
-                              "Ovulation Induction", "Embryo", "Sperm", "Oocyte",
-                              "IVF", "Fertility", "ICSI", "Assisted Reproduct"]),
-    ("אונקוגינקולוגיה",     ["Ovarian Neoplasms", "Uterine Neoplasms", "Cervical", "Endometrial Neoplasms",
-                              "Genital Neoplasms, Female", "Vulvar Neoplasms",
-                              "Cancer", "Carcinoma", "Tumor", "Tumour", "Oncolog", "Malignan"]),
-    ("סיבוכי הריון",        ["Pregnancy Complications", "Pre-Eclampsia", "Preeclampsia", "Eclampsia",
-                              "Gestational Diabetes", "Premature Birth", "Preterm", "Pregnancy, Ectopic",
-                              "Ectopic", "Abortion", "Miscarriage", "Stillbirth", "Twin", "Corticosteroid",
-                              "Antenatal", "Hypertensi", "Hemorrhage", "Haemorrhage"]),
-    ("רפואת אם-עובר",       ["Fetal", "Fetus", "Foetal", "Prenatal", "Ultrasonography, Prenatal",
-                              "Ultrasound", "Congenital Abnormalities", "Amniocentesis", "Doppler"]),
-    ("לידה ומיילדות",       ["Labor, Obstetric", "Delivery, Obstetric", "Cesarean", "Caesarean",
-                              "Parturition", "Postpartum", "Obstetric Labor", "Vaginal Birth",
-                              "Induction of Labo", "Labour"]),
-    ("אנדומטריוזיס וכאב אגן",["Endometriosis", "Pelvic Pain", "Adenomyosis", "Dysmenorrhea"]),
-    ("הפרעות מחזור והורמונים",["Menstruation Disturbances", "Polycystic Ovary", "PCOS", "Amenorrhea",
-                              "Menopaus", "Hormone Replacement", "Hot Flash", "Vasomotor"]),
-    ("רצפת אגן ואורוגינקולוגיה",["Pelvic Floor", "Urinary Incontinence", "Pelvic Organ Prolapse"]),
-    ("זיהומים ובריאות מינית",["Sexually Transmitted Diseases", "Vaginosis", "Human Papillomavirus",
-                              "Pelvic Inflammatory Disease"]),
-    ("גינקולוגיה כללית/ניתוחית",["Hysterectomy", "Contraception", "Leiomyoma", "Uterine Hemorrhage",
-                              "Gynecologic Surgical Procedures"]),
+    ("מיילדות", [  # הריון, לידה, סיבוכים, רפואת אם-עובר
+        "Pregnan", "Obstetric", "Pre-Eclampsia", "Preeclampsia", "Eclampsia",
+        "Gestational", "Premature Birth", "Preterm", "Ectopic", "Miscarriage", "Abortion",
+        "Stillbirth", "Twin", "Antenatal", "Corticosteroid", "Labor", "Labour", "Delivery",
+        "Cesarean", "Caesarean", "Parturition", "Postpartum", "Fetal", "Fetus", "Foetal",
+        "Prenatal", "Amniocentesis", "Placenta", "Doppler", "Maternal", "Perinatal", "Neonatal"]),
+    ("פוריות", [  # פוריות והפריה
+        "Reproductive Techniques", "Fertilization in Vitro", "Infertility", "Subfertility",
+        "Ovulation Induction", "Embryo", "Sperm", "Oocyte", "IVF", "ICSI",
+        "Assisted Reproduct", "Fertility Preservation", "Frozen Embryo", "Blastocyst"]),
+    ("אנדוקרינולוגיה", [  # אנדוקרינולוגיה רבייתית
+        "Polycystic Ovary", "PCOS", "Menopaus", "Amenorrhea", "Hormone Replacement",
+        "Hot Flash", "Vasomotor", "Menstruation Disturbances", "Hyperandrogen",
+        "Hyperprolactin", "Hypogonad", "Estrogen", "Androgen", "Endocrine"]),
+    ("אונקוגינקולוגיה", [  # ממאירויות גינקולוגיות
+        "Neoplasm", "Cancer", "Carcinoma", "Tumor", "Tumour", "Oncolog", "Malignan",
+        "Sarcoma", "Cervical Intraepithelial", "Trophoblastic"]),
+    ("אנדומטריוזיס", [
+        "Endometriosis", "Adenomyosis", "Pelvic Pain", "Dysmenorrhea"]),
+    ("גינקולוגיה כללית", [  # כולל רצפת אגן, ניתוחי, זיהומים, מניעה
+        "Hysterectomy", "Leiomyoma", "Fibroid", "Contraception", "Heavy Menstrual",
+        "Menorrhagia", "Pelvic Floor", "Urinary Incontinence", "Pelvic Organ Prolapse",
+        "Sexually Transmitted", "Vaginosis", "Papillomavirus", "Pelvic Inflammatory",
+        "Gynecologic Surgical", "Laparoscop", "Hysteroscop", "Vulva", "Cervical Cancer Screening",
+        "Papanicolaou"]),
 ]
-DEFAULT_TOPIC = "כללי / לא מסווג"
+DEFAULT_TOPIC = "גינקולוגיה כללית"
 
-# ── ציון חשיבות (0..100) — פשוט ושקוף: שלושה גורמים ברורים בלבד ──────────
-# הציון = סוג המחקר × 50% + יוקרת העיתון × 30% + טריות × 20%.  (סכום המשקלים = 1.0)
-# הסרנו בכוונה "ציטוטים" ו"גודל מדגם" — הם היו לא-אמינים למאמרים טריים ובלבלו.
+# ── ציון חשיבות (0..100) — שלושה גורמים אובייקטיביים בלבד ───────────────
+# הציון = רמת ראיות (סוג מחקר) 40% + השפעת העיתון 30% + מעמד החוקרים 30%.
+# "מעמד החוקרים" = מדד h-index של החוקר המשפיע ביותר ברשימת המחברים
+# (נמשך מ-Semantic Scholar). הסרנו "טריות" — היה סובייקטיבי ולא ברור.
 SCORE_WEIGHTS = {
-    "design":  0.50,   # סוג המחקר — הגורם החשוב ביותר (מטא/RCT > תצפיתי > דעה)
-    "journal": 0.30,   # יוקרת העיתון
-    "recency": 0.20,   # טריות (מאמר חדש מקבל ציון גבוה יותר)
+    "design":  0.40,   # רמת ראיות — מטא-אנליזה/RCT > תצפיתי > דעה
+    "journal": 0.30,   # השפעת העיתון
+    "author":  0.30,   # מעמד החוקרים (h-index מקסימלי בין המחברים)
 }
+# נרמול ה-h-index: ערך זה נחשב "פסגת התחום" (h-index שמעליו = ציון מלא).
+AUTHOR_HINDEX_TOP = 50
 
 # דירוג סוג מחקר (0..1) לפי Publication Type של PubMed
 # כל קבוצה: מילות מפתח (נסרקות גם ב-PublicationType וגם בכותרת) → דירוג.

@@ -48,6 +48,7 @@ def build(today: str | None = None) -> Path:
             "pub_types": a.get("pub_types") or [],
             "importance": round(a.get("importance", 0)),
             "breakdown": importance_breakdown(a),
+            "author_top": a.get("author_top") or "",
             "doi": a.get("doi") or "",
             "analysis": a.get("analysis"),
             "analysis_scope": a.get("analysis_scope"),
@@ -230,7 +231,7 @@ a{color:inherit;text-decoration:none}
 <div class="countbar" id="countbar"></div>
 <div class="feed" id="feed"></div>
 <div class="legend" id="legend"></div>
-<div class="explain">ℹ️ ציון החשיבות = סוג המחקר ‎50%‎ + יוקרת העיתון ‎30%‎ + טריות ‎20%‎ · רחף מעל העיגול לפירוט</div>
+<div class="explain">ℹ️ ציון החשיבות = רמת ראיות (סוג מחקר) ‎40%‎ + השפעת העיתון ‎30%‎ + מעמד החוקרים (h-index) ‎30%‎ · רחף מעל העיגול לפירוט</div>
 <div class="foot" id="foot"></div>
 <div class="fab">
   <button title="הדפסה לג'רנל קלאב" aria-label="הדפסה" onclick="printAll()">🖨</button>
@@ -309,14 +310,14 @@ function analysisHTML(an,scope){
 function cardHTML(a,i){
   const hv=hvLabel(a), b=a.breakdown||{};
   const auth=(a.authors||[]), am=auth.length?(esc(auth[0])+(auth.length>1?' et al.':'')):'';
-  const tip=`חשיבות ${a.importance}/100 — סוג מחקר ${b.design||'?'} · עיתון ${b.journal||'?'} · טריות ${b.recency||'?'}`;
+  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · השפעת עיתון ${b.journal} · מעמד חוקרים ${b.author}${b.hindex!=null?' (h-index '+b.hindex+')':''}`;
   const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+(a.topics||[]).map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
   return `<div class="card" style="animation-delay:${i*28}ms;border-right:5px solid ${jColor(a.journal)}">
     <div class="head">
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
       <div style="flex:1">
         <a class="ttl" dir="auto" href="https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/" target="_blank">${esc(a.title)}</a>
-        <div class="meta"><span class="jpill" style="background:${jColor(a.journal)}">${esc(a.journal)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}</div>
+        <div class="meta"><span class="jpill" style="background:${jColor(a.journal)}">${esc(a.journal)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}${b.hindex!=null?'<span title="h-index של החוקר המשפיע ביותר בצוות">· 👤 h-index '+b.hindex+'</span>':''}</div>
         <div class="tags">${tags}</div>
         <div class="actions">
           <button class="btn btn-primary" onclick="toggleAn(this,${i})">⚡ ניתוח ביקורתי</button>

@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS articles (
     mesh        TEXT,           -- JSON list
     topics      TEXT,           -- JSON list (קטגוריות בעברית)
     citations   INTEGER DEFAULT NULL,
+    author_hindex INTEGER DEFAULT NULL,  -- h-index מקסימלי בין המחברים
+    author_top  TEXT DEFAULT NULL,       -- שם החוקר המשפיע ביותר
     importance  REAL DEFAULT 0,
     fetched_at  TEXT,
     UNIQUE(pmid)
@@ -69,6 +71,12 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        # מיגרציה למסדים קיימים — הוספת עמודות מחברים אם חסרות
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(articles)").fetchall()}
+        if "author_hindex" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN author_hindex INTEGER DEFAULT NULL")
+        if "author_top" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN author_top TEXT DEFAULT NULL")
 
 
 # ── מאמרים ──────────────────────────────────────────────────────────────
@@ -78,15 +86,19 @@ def upsert_article(art: dict):
         conn.execute(
             """
             INSERT INTO articles (pmid, doi, title, abstract, journal, journal_issn,
-                pub_date, authors, pub_types, mesh, topics, citations, importance, fetched_at)
+                pub_date, authors, pub_types, mesh, topics, citations,
+                author_hindex, author_top, importance, fetched_at)
             VALUES (:pmid,:doi,:title,:abstract,:journal,:journal_issn,
-                :pub_date,:authors,:pub_types,:mesh,:topics,:citations,:importance,:fetched_at)
+                :pub_date,:authors,:pub_types,:mesh,:topics,:citations,
+                :author_hindex,:author_top,:importance,:fetched_at)
             ON CONFLICT(pmid) DO UPDATE SET
                 doi=excluded.doi, title=excluded.title, abstract=excluded.abstract,
                 journal=excluded.journal, journal_issn=excluded.journal_issn,
                 pub_date=excluded.pub_date, authors=excluded.authors,
                 pub_types=excluded.pub_types, mesh=excluded.mesh, topics=excluded.topics,
                 citations=COALESCE(excluded.citations, articles.citations),
+                author_hindex=COALESCE(excluded.author_hindex, articles.author_hindex),
+                author_top=COALESCE(excluded.author_top, articles.author_top),
                 importance=excluded.importance
             """,
             {
@@ -102,6 +114,8 @@ def upsert_article(art: dict):
                 "mesh": json.dumps(art.get("mesh", []), ensure_ascii=False),
                 "topics": json.dumps(art.get("topics", []), ensure_ascii=False),
                 "citations": art.get("citations"),
+                "author_hindex": art.get("author_hindex"),
+                "author_top": art.get("author_top"),
                 "importance": art.get("importance", 0),
                 "fetched_at": art.get("fetched_at", now_iso()),
             },

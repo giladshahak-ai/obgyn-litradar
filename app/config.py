@@ -37,19 +37,26 @@ JOURNALS = [
     {"name": "BJOG",                     "issn": "1470-0328", "issn_e": "1471-0528", "filter_obgyn": False, "weight": 8,  "primary": True,  "nick": "BJOG"},
     {"name": "NEJM",                     "issn": "0028-4793", "issn_e": "1533-4406", "filter_obgyn": True,  "weight": 10, "primary": True,  "nick": "NEJM"},
     {"name": "The Lancet",               "issn": "0140-6736", "issn_e": "1474-547X", "filter_obgyn": True,  "weight": 10, "primary": True,  "nick": "Lancet"},
-    # "White Journal" — הנחה: Int. Journal of Gynecology & Obstetrics (FIGO). אם התכוונת לאחר, החלף ISSN.
-    {"name": "Int J Gynaecol Obstet",    "issn": "0020-7292", "issn_e": "1879-3479", "filter_obgyn": False, "weight": 7,  "primary": True,  "nick": "White Journal?"},
+    # "White Journal" = Ultrasound in Obstetrics & Gynecology (לפי בקשת המשתמש)
+    {"name": "Ultrasound Obstet Gynecol","issn": "0960-7692", "issn_e": "1469-0705", "filter_obgyn": False, "weight": 8,  "primary": True,  "nick": "Ultrasound O&G"},
     # ── עיתונים נוספים (לא בדייג'סט; לחיפוש/ארכיון) ──
     {"name": "JAMA",                     "issn": "0098-7484", "filter_obgyn": True,  "weight": 9,  "primary": False},
     {"name": "BMJ",                      "issn": "0959-8138", "filter_obgyn": True,  "weight": 8,  "primary": False},
     {"name": "Human Reproduction",       "issn": "0268-1161", "filter_obgyn": False, "weight": 7,  "primary": False},
     {"name": "Fertility & Sterility",    "issn": "0015-0282", "filter_obgyn": False, "weight": 7,  "primary": False},
-    {"name": "Ultrasound Obstet Gynecol","issn": "0960-7692", "filter_obgyn": False, "weight": 7,  "primary": False},
 ]
 
 # ── דייג'סט שבועי ───────────────────────────────────────────────────────
-DIGEST_PER_JOURNAL = 3      # מקסימום מאמרים לכל עיתון ליבה בשבוע
-DIGEST_WINDOW_DAYS = 14     # חלון הדייג'סט (ימים אחורה) — שבועיים כדי לתפוס אינדוקס מאוחר
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  לוח הבקרה של הדייג'סט — שנֵה כאן (וזהו) כדי לכוונן זמן וכמות          ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+DIGEST_WINDOW_DAYS  = 14    # ⏱️  ברירת מחדל: כמה ימים אחורה להציג (ניתן לשינוי חי גם באתר)
+DIGEST_PER_JOURNAL  = 3     # 🔢  ברירת מחדל: כמה מאמרים מקסימום מכל עיתון (ניתן לשינוי חי באתר)
+DIGEST_MAX_TOTAL    = 30    # 🔝  תקרה לכמות המאמרים הכוללת המוצגת
+
+# כמה לאסוף "למאגר האתר" (superset) — גדול מספיק כדי שהפקדים באתר יוכלו להרחיב:
+DIGEST_BAKE_WINDOW_DAYS = 90
+DIGEST_BAKE_PER_JOURNAL = 8
 
 # פילטר לעיתונים הכלליים. משלב MeSH (מדויק) עם מילות טקסט בכותרת/תקציר (tiab) —
 # כי מאמרים טריים עדיין חסרי MeSH, וה-tiab תופס אותם ביום הפרסום.
@@ -113,14 +120,13 @@ TOPIC_MAP = [
 ]
 DEFAULT_TOPIC = "כללי / לא מסווג"
 
-# ── דירוג חשיבות (משקלים) ───────────────────────────────────────────────
-# סכום המשקלים מנורמל ל-0..100. כוונן לפי טעמך.
+# ── ציון חשיבות (0..100) — פשוט ושקוף: שלושה גורמים ברורים בלבד ──────────
+# הציון = סוג המחקר × 50% + יוקרת העיתון × 30% + טריות × 20%.  (סכום המשקלים = 1.0)
+# הסרנו בכוונה "ציטוטים" ו"גודל מדגם" — הם היו לא-אמינים למאמרים טריים ובלבלו.
 SCORE_WEIGHTS = {
-    "journal":   0.30,   # יוקרת העיתון
-    "design":    0.30,   # חוזק תכנון המחקר
-    "recency":   0.15,   # טריות
-    "citations": 0.15,   # מהירות ציטוט (OpenAlex)
-    "sample":    0.10,   # גודל מדגם (אם זוהה)
+    "design":  0.50,   # סוג המחקר — הגורם החשוב ביותר (מטא/RCT > תצפיתי > דעה)
+    "journal": 0.30,   # יוקרת העיתון
+    "recency": 0.20,   # טריות (מאמר חדש מקבל ציון גבוה יותר)
 }
 
 # דירוג סוג מחקר (0..1) לפי Publication Type של PubMed

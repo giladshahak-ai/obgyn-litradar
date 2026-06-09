@@ -41,10 +41,12 @@ JOURNALS = [
     {"name": "BJOG",                     "issn": "1470-0328", "issn_e": "1471-0528", "filter_obgyn": False, "weight": 8,  "tier": 2, "primary": True, "nick": "BJOG"},
     # "White Journal" = Ultrasound in Obstetrics & Gynecology (לפי בקשת המשתמש)
     {"name": "Ultrasound Obstet Gynecol","issn": "0960-7692", "issn_e": "1469-0705", "filter_obgyn": False, "weight": 8,  "tier": 2, "primary": True, "nick": "Ultrasound O&G"},
+    {"name": "Am J Obstet Gynecol MFM",  "issn": "2589-9333", "issn_e": "2589-9333", "filter_obgyn": False, "weight": 8,  "tier": 2, "primary": True, "nick": "AJOG MFM"},
+    {"name": "Gynecologic Oncology",     "issn": "0090-8258", "issn_e": "1095-6859", "filter_obgyn": False, "weight": 7,  "tier": 2, "primary": True, "nick": "Gyn Oncology"},
+    {"name": "Fertility and Sterility",  "issn": "0015-0282", "issn_e": "1556-5653", "filter_obgyn": False, "weight": 8,  "tier": 2, "primary": True, "nick": "Fertility & Sterility"},
     # ── עיתונים נוספים (לא ראשיים; לארכיון) ──
     {"name": "BMJ",                      "issn": "0959-8138", "filter_obgyn": True,  "weight": 8,  "tier": 2, "primary": False},
     {"name": "Human Reproduction",       "issn": "0268-1161", "filter_obgyn": False, "weight": 7,  "tier": 2, "primary": False},
-    {"name": "Fertility & Sterility",    "issn": "0015-0282", "filter_obgyn": False, "weight": 7,  "tier": 2, "primary": False},
 ]
 
 # ── דייג'סט שבועי ───────────────────────────────────────────────────────
@@ -154,17 +156,18 @@ TOPIC_MAP = [
 ]
 DEFAULT_TOPIC = "גינקולוגיה כללית"
 
-# ── ציון חשיבות (0..100) — שלושה גורמים אובייקטיביים בלבד ───────────────
-# הציון = רמת ראיות (סוג מחקר) 40% + השפעת העיתון 30% + מעמד החוקרים 30%.
-# "מעמד החוקרים" = מדד h-index של החוקר המשפיע ביותר ברשימת המחברים
-# (נמשך מ-Semantic Scholar). הסרנו "טריות" — היה סובייקטיבי ולא ברור.
+# ── ציון חשיבות (0..100) — ארבעה גורמים אובייקטיביים ───────────────────
+# מבוסס על ניתוח מאמרי 2025 המשפיעים: הסיגנל החזק ביותר היה השפעת-ציטוט
+# מנורמלת לתחום (FWCI). לכן הוספנו "השפעה בפועל". (סכום המשקלים = 1.0)
 SCORE_WEIGHTS = {
-    "design":  0.40,   # רמת ראיות — מטא-אנליזה/RCT > תצפיתי > דעה
-    "journal": 0.30,   # השפעת העיתון
-    "author":  0.30,   # מעמד החוקרים (h-index מקסימלי בין המחברים)
+    "design":  0.30,   # רמת ראיות — מטא/RCT > תצפיתי > דעה
+    "journal": 0.20,   # השפעת העיתון
+    "author":  0.20,   # מעמד החוקרים (h-index)
+    "impact":  0.30,   # השפעה בפועל — ציטוטים מנורמלים לתחום (OpenAlex FWCI)
 }
-# נרמול ה-h-index: ערך זה נחשב "פסגת התחום" (h-index שמעליו = ציון מלא).
-AUTHOR_HINDEX_TOP = 50
+AUTHOR_HINDEX_TOP = 50    # h-index שמעליו = ציון מלא
+IMPACT_FWCI_TOP   = 20    # FWCI שמעליו = השפעה מלאה (פי-20 מממוצע התחום)
+IMPACT_FLOOR      = 0.35  # רצפה למאמרים טריים (טרם נצברו ציטוטים) — לא להעניש
 
 # דירוג סוג מחקר (0..1) לפי Publication Type של PubMed
 # כל קבוצה: מילות מפתח (נסרקות גם ב-PublicationType וגם בכותרת) → דירוג.

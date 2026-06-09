@@ -11,7 +11,8 @@ from datetime import date
 from app import db
 from app.config import (JOURNALS, OBGYN_FILTER, HIGH_VALUE_FILTER, TOPIC_MAP,
                         DEFAULT_TOPIC, DESIGN_RANK, DESIGN_RANK_DEFAULT, SCORE_WEIGHTS,
-                        AUTHOR_HINDEX_TOP, DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS,
+                        AUTHOR_HINDEX_TOP, IMPACT_FWCI_TOP, IMPACT_FLOOR,
+                        DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS,
                         DIGEST_MAX_TOTAL, TREND_TOPICS)
 
 OUT_DIR = Path(__file__).resolve().parent / "site"
@@ -49,6 +50,8 @@ def build(today: str | None = None) -> Path:
         "design_default": DESIGN_RANK_DEFAULT,
         "weights": SCORE_WEIGHTS,
         "author_top": AUTHOR_HINDEX_TOP,
+        "impact_fwci_top": IMPACT_FWCI_TOP,
+        "impact_floor": IMPACT_FLOOR,
         "default_window": DIGEST_WINDOW_DAYS,
         "default_per_journal": DIGEST_PER_JOURNAL,
         "max_total": DIGEST_MAX_TOTAL,
@@ -200,7 +203,7 @@ a{color:inherit;text-decoration:none}
 <div class="status" id="status"></div>
 <div class="feed" id="feed"></div>
 <div class="legend" id="legend"></div>
-<div class="explain">ℹ️ ציון = רמת ראיות ‎40%‎ + השפעת העיתון ‎30%‎ + מעמד החוקרים (h-index) ‎30%‎ · רחף מעל העיגול</div>
+<div class="explain">ℹ️ ציון = רמת ראיות ‎30%‎ + עיתון ‎20%‎ + מעמד חוקרים (h-index) ‎20%‎ + השפעה בפועל (ציטוטים/FWCI) ‎30%‎ · רחף מעל העיגול</div>
 
 <div class="overlay" id="trendsOverlay">
   <div class="modal">
@@ -285,10 +288,18 @@ function journalOf(a){return J_BY_ISSN[a.issn]||null;}
 function designScore(a){const blob=(a.pub_types.join(' ')+' '+a.title).toLowerCase();for(const[kws,rank]of CFG.design_rank){if(kws.some(k=>blob.includes(k.toLowerCase())))return rank;}return CFG.design_default;}
 function journalScore(a){const j=journalOf(a);return (j?j.weight:4)/CFG.max_weight;}
 function authorScore(h){if(h==null)return 0.30;return Math.min(Math.log1p(Math.max(h,0))/Math.log1p(CFG.author_top),1);}
-function scoreOf(a){const d=designScore(a),jr=journalScore(a),au=authorScore(a.hindex);
-  const w=CFG.weights;const total=(w.design*d+w.journal*jr+w.author*au)*100;
-  a.b={design:Math.round(d*100),journal:Math.round(jr*100),author:Math.round(au*100),hindex:a.hindex};
+function impactScore(fwci,cites){
+  let norm;
+  if(fwci!=null) norm=Math.min(Math.log1p(Math.max(fwci,0))/Math.log1p(CFG.impact_fwci_top),1);
+  else if(cites!=null) norm=Math.min(Math.log1p(Math.max(cites,0))/Math.log1p(100),1);
+  else return CFG.impact_floor;
+  return Math.max(CFG.impact_floor,norm);
+}
+function scoreOf(a){const d=designScore(a),jr=journalScore(a),au=authorScore(a.hindex),im=impactScore(a.fwci,a.citations);
+  const w=CFG.weights;const total=(w.design*d+w.journal*jr+w.author*au+w.impact*im)*100;
+  a.b={design:Math.round(d*100),journal:Math.round(jr*100),author:Math.round(au*100),impact:Math.round(im*100)};
   a.importance=Math.round(total*10)/10;return a.importance;}
+function metaBadge(a){let s='';if(a.hindex!=null)s+=' · 👤 h-index '+a.hindex;if(a.citations!=null&&a.citations>0)s+=' · 📊 '+a.citations+' ציטוטים';return s;}
 function classify(a){const strong=(a.mesh.join(' | ')+' || '+a.title).toLowerCase();let hits=CFG.topics.filter(([n,kw])=>kw.some(k=>strong.includes(k.toLowerCase()))).map(x=>x[0]);
   if(!hits.length){const blob=strong+' '+a.abstract.toLowerCase();hits=CFG.topics.filter(([n,kw])=>kw.some(k=>blob.includes(k.toLowerCase()))).map(x=>x[0]);}
   return hits.length?hits:[CFG.default_topic];}
@@ -361,7 +372,7 @@ function hvLabel(a){const pt=a.pub_types.join(' '),t=a.title.toLowerCase();
 function cardHTML(a,i){
   const j=journalOf(a),hv=hvLabel(a),b=a.b||{};
   const am=a.authors.length?(esc(a.authors[0])+(a.authors.length>1?' et al.':'')):'';
-  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · מעמד חוקרים ${b.author}${a.hindex!=null?' (h-index '+a.hindex+')':' (טוען…)'}`;
+  const tip=`חשיבות ${a.importance}/100\nרמת ראיות ${b.design} · עיתון ${b.journal} · חוקרים ${b.author}${a.hindex!=null?' (h '+a.hindex+')':''} · השפעה ${b.impact}${a.fwci!=null?' (FWCI '+(Math.round(a.fwci*10)/10)+')':(a.hindex==null?' (טוען…)':'')}`;
   const tags=(hv?`<span class="tag t-star">⭐ ${hv}</span>`:'')+a.topics.map(t=>`<span class="tag t-topic">${esc(t)}</span>`).join('');
   const an=ANALYSES[a.pmid];
   return `<div class="card${j.tier===1?' tier1':''}">
@@ -369,7 +380,7 @@ function cardHTML(a,i){
       <div class="ring ${ringCls(a.importance)}" title="${tip}">${a.importance}<small>חשיבות</small></div>
       <div style="flex:1">
         <a class="ttl" dir="auto" href="https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/" target="_blank">${esc(a.title)}</a>
-        <div class="meta"><span class="jpill" style="background:${j.tier===1?'#B98E3C':'#5E584E'}">${j.tier===1?'👑 ':''}${esc(j.nick)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${a.hindex!=null?'· 👤 h-index '+a.hindex:''}</span></div>
+        <div class="meta"><span class="jpill" style="background:${j.tier===1?'#B98E3C':'#5E584E'}">${j.tier===1?'👑 ':''}${esc(j.nick)}</span><span>${esc(a.date)}</span>${am?'<span>·&nbsp;<bdi>'+am+'</bdi></span>':''}<span id="h-${a.pmid}">${metaBadge(a)}</span></div>
         <div class="tags">${tags}</div>
         <div class="actions">
           <button class="btn btn-primary" onclick="toggleAn('${a.pmid}',this)">⚡ ניתוח ביקורתי</button>
@@ -400,6 +411,8 @@ async function enrichAuthors(){
   await Promise.all(arts.map(a=>oaGate(async()=>{
     try{
       const w=await fetch('https://api.openalex.org/works/doi:'+encodeURIComponent(a.doi)+'?mailto=giladshahak@gmail.com').then(r=>r.json());
+      a.fwci=(typeof w.fwci==='number')?w.fwci:null;
+      a.citations=(typeof w.cited_by_count==='number')?w.cited_by_count:null;
       const aus=(w.authorships||[]).map(x=>x.author&&x.author.id).filter(Boolean);
       let best=null;
       // check up to first 3 + last 2 authors, take max h-index
@@ -411,7 +424,7 @@ async function enrichAuthors(){
       a.hindex=best==null?0:best;
     }catch(e){a.hindex=0;}
     scoreOf(a);
-    const el=document.getElementById('h-'+a.pmid);if(el)el.innerHTML=a.hindex?'· 👤 h-index '+a.hindex:'';
+    const el=document.getElementById('h-'+a.pmid);if(el)el.innerHTML=metaBadge(a);
   })));
   applyView();   // re-rank with author scores
 }

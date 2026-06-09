@@ -12,10 +12,13 @@ from app.config import DIGEST_PER_JOURNAL, DIGEST_WINDOW_DAYS
 
 OUT_DIR = Path(__file__).resolve().parent / "site"
 OUT_DIR.mkdir(exist_ok=True)
+BASE_DIR_DOCS = Path(__file__).resolve().parent / "docs"
 
 
 def build(window_days: int = DIGEST_WINDOW_DAYS, per_journal: int = DIGEST_PER_JOURNAL,
           today: str | None = None) -> Path:
+    if today is None:
+        today = date.today().strftime("%d/%m/%Y")
     db.init_db()
     items = digest_with_analyses(per_journal=per_journal, window_days=window_days)
     data = []
@@ -48,6 +51,11 @@ def build(window_days: int = DIGEST_WINDOW_DAYS, per_journal: int = DIGEST_PER_J
                    .replace("/*__META__*/", json.dumps(meta, ensure_ascii=False))
     out = OUT_DIR / "index.html"
     out.write_text(html, encoding="utf-8")
+    # כתיבה גם ל-docs/ (מקור GitHub Pages) כדי שהאתר החי יתעדכן
+    docs = BASE_DIR_DOCS
+    docs.mkdir(exist_ok=True)
+    (docs / "index.html").write_text(html, encoding="utf-8")
+    (docs / "digest.html").write_text(html, encoding="utf-8")
     return out
 
 

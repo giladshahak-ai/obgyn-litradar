@@ -386,10 +386,12 @@ async function callClaude(user){
   if(!key) throw new Error('חסר מפתח. לחץ 🔑 ניתוח.');
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:CFG.analysis_model,max_tokens:4000,system:CFG.critic_prompt,messages:[{role:'user',content:user},{role:'assistant',content:'{'}]})});
+    body:JSON.stringify({model:CFG.analysis_model,max_tokens:4000,system:CFG.critic_prompt,messages:[{role:'user',content:user}]})});
   if(!r.ok){let t='';try{t=(await r.json()).error.message;}catch(e){t=await r.text();}throw new Error(r.status+' '+String(t).slice(0,140));}
-  const j=await r.json();let txt='{'+((j.content&&j.content[0]&&j.content[0].text)||'');
-  return JSON.parse(txt.slice(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  const j=await r.json();const txt=((j.content&&j.content[0]&&j.content[0].text)||'');
+  const s=txt.indexOf('{'),e=txt.lastIndexOf('}');
+  if(s<0||e<0)throw new Error('לא הוחזר JSON תקין מהמודל');
+  return JSON.parse(txt.slice(s,e+1));
 }
 async function analyzeLive(pmid){
   const a=state.articles.find(x=>x.pmid===pmid),p=document.getElementById('an-'+pmid);if(!a||!p)return;

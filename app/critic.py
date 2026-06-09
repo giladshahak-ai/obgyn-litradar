@@ -50,13 +50,12 @@ def analyze_article(article: dict, content: str, source_scope: str,
             system=CRITIC_SYSTEM_PROMPT,
             messages=[
                 {"role": "user", "content": user_msg},
-                {"role": "assistant", "content": "{"},  # prefill — מאלץ JSON
             ],
         )
     except Exception as e:
         raise AnalysisError(f"שגיאת קריאה ל-Claude: {e}") from e
 
-    raw = "{" + resp.content[0].text
+    raw = resp.content[0].text
     payload = _extract_json(raw)
     db.save_analysis(article["pmid"], payload, model, source_scope)
     return payload
